@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["primitives", "program"]
+
+# Always optimize; building and running the guest takes much longer without optimization.
+[profile.dev]
+opt-level = 3
+
+[profile.dev.build-override]
+opt-level = 3
+
+[profile.release]
+debug = 1
+lto = true
+
+[profile.release.build-override]
+opt-level = 3
+
+[workspace.dependencies]
+bonsai-sdk = { version = "0.6.0", features = ["async"] }
+hashbrown = { version = "0.14.3", features = ["inline-more"] }
+revm-primitives = { version = "2.0", default_features = false }
+revm = { git = "https://github.com/0xEigenLabs/revm", default-features = false, features = [
+    "std",
+    "serde",
+] }

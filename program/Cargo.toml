@@ -1,0 +1,8 @@
+[package]
+name = "program"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+#zeth-lib = { path = "../lib" }
+zeth-primitives = { path = "../primitives" }
