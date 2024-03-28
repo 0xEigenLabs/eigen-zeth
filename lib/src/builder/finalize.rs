@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::alloy2reth::{from_address, to_address, to_b256};
 use anyhow::Result;
 use core::mem;
 use revm::{Database, DatabaseCommit};
@@ -70,11 +69,8 @@ impl BlockFinalizeStrategy<MemDb> for MemDbBlockFinalizeStrategy {
             let storage_root = {
                 // getting a mutable reference is more efficient than calling remove
                 // every account must have an entry, even newly created accounts
-                let (storage_trie, _) = block_builder
-                    .input
-                    .parent_storage
-                    .get_mut(&to_address(*address))
-                    .unwrap();
+                let (storage_trie, _) =
+                    block_builder.input.parent_storage.get_mut(address).unwrap();
                 // for cleared accounts always start from the empty trie
                 if account.state == AccountState::StorageCleared {
                     storage_trie.clear();
@@ -97,7 +93,7 @@ impl BlockFinalizeStrategy<MemDb> for MemDbBlockFinalizeStrategy {
                 nonce: account.info.nonce,
                 balance: account.info.balance,
                 storage_root,
-                code_hash: to_b256(account.info.code_hash),
+                code_hash: account.info.code_hash,
             };
             state_trie.insert_rlp(&state_trie_index, state_account)?;
         }

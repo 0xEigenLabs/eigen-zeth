@@ -14,7 +14,6 @@
 
 use core::mem;
 
-use crate::alloy2reth::{from_address, from_b256, to_address, to_b256};
 use anyhow::{bail, Result};
 use hashbrown::HashMap;
 use revm::{
@@ -25,7 +24,7 @@ use zeth_primitives::{
     keccak::{keccak, KECCAK_EMPTY},
     transactions::TxEssence,
     trie::StateAccount,
-    Bytes, U160,
+    Bytes,
 };
 
 use crate::{
@@ -95,7 +94,7 @@ impl DbInitStrategy<MemDb> for MemDbInitStrategy {
             let bytecode = if code_hash.0 == KECCAK_EMPTY.0 {
                 Bytecode::new()
             } else {
-                let bytes = contracts.get(&from_b256(code_hash)).unwrap().clone();
+                let bytes = contracts.get(&code_hash).unwrap().clone();
                 Bytecode::new_raw(bytes.into())
             };
 
@@ -112,14 +111,14 @@ impl DbInitStrategy<MemDb> for MemDbInitStrategy {
                 info: AccountInfo {
                     balance: state_account.balance,
                     nonce: state_account.nonce,
-                    code_hash: from_b256(state_account.code_hash),
+                    code_hash: state_account.code_hash,
                     code: Some(bytecode),
                 },
                 state: AccountState::None,
                 storage,
             };
 
-            accounts.insert(from_address(*address), mem_account);
+            accounts.insert(*address, mem_account);
         }
         //guest_mem_forget(contracts);
 
@@ -128,7 +127,7 @@ impl DbInitStrategy<MemDb> for MemDbInitStrategy {
             HashMap::with_capacity(block_builder.input.ancestor_headers.len() + 1);
         block_hashes.insert(
             block_builder.input.state_input.parent_header.number,
-            from_b256(block_builder.input.state_input.parent_header.hash()),
+            block_builder.input.state_input.parent_header.hash(),
         );
         let mut prev = &block_builder.input.state_input.parent_header;
         for current in &block_builder.input.ancestor_headers {
@@ -150,7 +149,7 @@ impl DbInitStrategy<MemDb> for MemDbInitStrategy {
                     MAX_BLOCK_HASH_AGE,
                 );
             }
-            block_hashes.insert(current.number, from_b256(current_hash));
+            block_hashes.insert(current.number, current_hash);
             prev = current;
         }
 

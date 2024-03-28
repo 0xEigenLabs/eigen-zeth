@@ -15,10 +15,11 @@
 use anyhow::anyhow;
 use hashbrown::{hash_map::Entry, HashMap};
 use revm::{
-    primitives::{Account, AccountInfo, Bytecode, B160, B256},
+    primitives::{Account, AccountInfo, Bytecode, B256},
     Database, DatabaseCommit,
 };
 use thiserror::Error as ThisError;
+use zeth_primitives::Address;
 use zeth_primitives::U256;
 
 /// Error returned by the [MemDb].
@@ -26,10 +27,10 @@ use zeth_primitives::U256;
 pub enum DbError {
     /// Returned when an account was accessed but not loaded into the DB.
     #[error("account {0} not loaded")]
-    AccountNotFound(B160),
+    AccountNotFound(Address),
     /// Returned when storage was accessed but not loaded into the DB.
     #[error("storage {1}@{0} not loaded")]
-    SlotNotFound(B160, U256),
+    SlotNotFound(Address, U256),
     /// Returned when a block hash was accessed but not loaded into the DB.
     #[error("block {0} not loaded")]
     BlockNotFound(u64),
@@ -80,7 +81,7 @@ impl DbAccount {
 #[derive(Clone, Debug, Default)]
 pub struct MemDb {
     /// Account info where None means it is not existing.
-    pub accounts: HashMap<B160, DbAccount>,
+    pub accounts: HashMap<Address, DbAccount>,
     /// All cached block hashes.
     pub block_hashes: HashMap<u64, B256>,
 }
@@ -90,7 +91,7 @@ impl MemDb {
         self.accounts.len()
     }
 
-    pub fn storage_keys(&self) -> HashMap<B160, Vec<U256>> {
+    pub fn storage_keys(&self) -> HashMap<Address, Vec<U256>> {
         let mut out = HashMap::new();
         for (address, account) in &self.accounts {
             out.insert(*address, account.storage.keys().cloned().collect());
@@ -101,7 +102,7 @@ impl MemDb {
 
     /// Insert account info without overriding its storage.
     /// Panics if a different account info exists.
-    pub fn insert_account_info(&mut self, address: B160, info: AccountInfo) {
+    pub fn insert_account_info(&mut self, address: Address, info: AccountInfo) {
         match self.accounts.entry(address) {
             Entry::Occupied(entry) => assert_eq!(info, entry.get().info),
             Entry::Vacant(entry) => {
@@ -112,7 +113,7 @@ impl MemDb {
 
     /// insert account storage without overriding the account info.
     /// Panics if the account does not exist.
-    pub fn insert_account_storage(&mut self, address: &B160, index: U256, data: U256) {
+    pub fn insert_account_storage(&mut self, address: &Address, index: U256, data: U256) {
         let account = self.accounts.get_mut(address).expect("account not found");
         account.storage.insert(index, data);
     }
@@ -132,7 +133,7 @@ impl Database for MemDb {
     type Error = DbError;
 
     /// Get basic account information.
-    fn basic(&mut self, address: B160) -> Result<Option<AccountInfo>, Self::Error> {
+    fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
         match self.accounts.get(&address) {
             Some(db_account) => Ok(db_account.info()),
             None => Err(DbError::AccountNotFound(address)),
@@ -146,7 +147,7 @@ impl Database for MemDb {
     }
 
     /// Get storage value of address at index.
-    fn storage(&mut self, address: B160, index: U256) -> Result<U256, Self::Error> {
+    fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
         match self.accounts.get(&address) {
             // if we have this account in the cache, we can query its storage
             Some(account) => match account.storage.get(&index) {
@@ -181,7 +182,7 @@ impl Database for MemDb {
 }
 
 impl DatabaseCommit for MemDb {
-    fn commit(&mut self, changes: HashMap<B160, Account>) {
+    fn commit(&mut self, changes: HashMap<Address, Account>) {
         for (address, new_account) in changes {
             // if nothing was touched, there is nothing to do
             if !new_account.is_touched() {

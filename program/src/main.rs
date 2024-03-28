@@ -2,8 +2,8 @@ use zeth_lib::{
     builder::{BlockBuilderStrategy, EthereumStrategy},
     consts::ETH_MAINNET_CHAIN_SPEC,
     input::{BlockBuildInput, StateInput},
-    EthereumTxEssence,
 };
+use zeth_primitives::transactions::ethereum::EthereumTxEssence;
 
 pub fn main() {
     // Read the input previous block and transaction data

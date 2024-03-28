@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 use std::{io, io::Read};
 
 /// An adaptor that chains multiple readers together.
@@ -28,6 +27,7 @@ where
     /// Creates a new instance of `MultiReader`.
     ///
     /// This function takes an iterator over readers and returns a `MultiReader`.
+    #[allow(dead_code)]
     pub fn new(readers: I) -> MultiReader<I::IntoIter, R> {
         let mut readers = readers.into_iter();
         let current = readers.next();

@@ -14,7 +14,6 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
 use core::{
     cell::RefCell,
     cmp,

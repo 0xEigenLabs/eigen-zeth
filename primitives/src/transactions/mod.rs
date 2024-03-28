@@ -205,7 +205,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::{transactions::EthereumTransaction, RlpBytes};
+    use crate::RlpBytes;
 
     #[test]
     fn rlp_length() {

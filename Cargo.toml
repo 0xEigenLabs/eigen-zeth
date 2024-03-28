@@ -20,7 +20,7 @@ opt-level = 3
 bonsai-sdk = { version = "0.6.0", features = ["async"] }
 hashbrown = { version = "0.14.3", features = ["inline-more"] }
 revm-primitives = { version = "2.0", default_features = false }
-revm = { git = "https://github.com/0xEigenLabs/revm", default-features = false, features = [
+revm = { git = "https://github.com/0xEigenLabs/revm", branch = "serde-no-std", default-features = false, features = [
     "std",
     "serde",
 ] }
