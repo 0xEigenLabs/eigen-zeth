@@ -20,13 +20,13 @@ use revm::{primitives::SpecId, Database, DatabaseCommit};
 use serde::Serialize;
 use zeth_primitives::{
     block::Header,
-    transactions::{ethereum::EthereumTxEssence, /*optimism::OptimismTxEssence, */TxEssence},
+    transactions::{ethereum::EthereumTxEssence, /*optimism::OptimismTxEssence, */ TxEssence},
     trie::MptNode,
 };
 
 use crate::{
     builder::{
-        execute::{ethereum::EthTxExecStrategy, /*optimism::OpTxExecStrategy, */TxExecStrategy},
+        execute::{ethereum::EthTxExecStrategy, /*optimism::OpTxExecStrategy, */ TxExecStrategy,},
         finalize::{BlockFinalizeStrategy, MemDbBlockFinalizeStrategy},
         initialize::{DbInitStrategy, MemDbInitStrategy},
         prepare::{EthHeaderPrepStrategy, HeaderPrepStrategy},

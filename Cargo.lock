@@ -1962,6 +1962,7 @@ dependencies = [
 name = "program"
 version = "0.1.0"
 dependencies = [
+ "zeth-lib",
  "zeth-primitives",
 ]
 

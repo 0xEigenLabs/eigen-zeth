@@ -1,12 +1,9 @@
-use zeth_primitives::block::Header;
-/*
 use zeth_lib::{
     builder::{BlockBuilderStrategy, EthereumStrategy},
     consts::ETH_MAINNET_CHAIN_SPEC,
     input::{BlockBuildInput, StateInput},
     EthereumTxEssence,
 };
-
 
 pub fn main() {
     // Read the input previous block and transaction data
@@ -43,10 +40,4 @@ pub fn main() {
     //env::commit(&output);
     // Leak memory, save cycles
     core::mem::forget(output);
-}
-*/
-
-pub fn main() {
-    let header = Header::default();
-    println!("{:?}", header);
 }

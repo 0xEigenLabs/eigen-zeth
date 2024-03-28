@@ -19,7 +19,7 @@ use revm::{
     Database, DatabaseCommit,
 };
 use thiserror::Error as ThisError;
-use zeth_primitives::{U256};
+use zeth_primitives::U256;
 
 /// Error returned by the [MemDb].
 #[derive(Debug, ThisError)]

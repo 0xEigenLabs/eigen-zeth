@@ -14,6 +14,7 @@
 
 use core::{fmt::Debug, mem::take};
 
+use crate::alloy2reth::{from_address, from_b256, to_access_list, to_address, to_b256, to_log};
 use anyhow::{anyhow, bail, Context};
 #[cfg(not(target_os = "zkvm"))]
 use log::{debug, trace};
@@ -25,14 +26,13 @@ use revm::{
 use ruint::aliases::U256;
 use zeth_primitives::{
     alloy_rlp,
-    Address,
     receipt::Receipt,
     transactions::{
         ethereum::{EthereumTxEssence, TransactionKind},
         TxEssence,
     },
     trie::MptNode,
-    Bloom,
+    Address, Bloom,
 };
 
 use super::TxExecStrategy;
@@ -164,7 +164,7 @@ impl TxExecStrategy<EthereumTxEssence> for EthTxExecStrategy {
                 tx.essence.tx_type(),
                 result.is_success(),
                 cumulative_gas_used,
-                result.logs().into_iter().map(|log| log.into()).collect(),
+                result.logs().into_iter().map(|log| to_log(log)).collect(),
             );
 
             // accumulate logs to the block bloom filter
@@ -264,12 +264,12 @@ impl TxExecStrategy<EthereumTxEssence> for EthTxExecStrategy {
 pub fn fill_eth_tx_env(tx_env: &mut TxEnv, essence: &EthereumTxEssence, caller: Address) {
     match essence {
         EthereumTxEssence::Legacy(tx) => {
-            tx_env.caller = caller;
+            tx_env.caller = from_address(caller);
             tx_env.gas_limit = tx.gas_limit.try_into().unwrap();
             tx_env.gas_price = tx.gas_price;
             tx_env.gas_priority_fee = None;
             tx_env.transact_to = if let TransactionKind::Call(to_addr) = tx.to {
-                TransactTo::Call(to_addr)
+                TransactTo::Call(from_address(to_addr))
             } else {
                 TransactTo::create()
             };
@@ -280,12 +280,12 @@ pub fn fill_eth_tx_env(tx_env: &mut TxEnv, essence: &EthereumTxEssence, caller: 
             tx_env.access_list.clear();
         }
         EthereumTxEssence::Eip2930(tx) => {
-            tx_env.caller = caller;
+            tx_env.caller = from_address(caller);
             tx_env.gas_limit = tx.gas_limit.try_into().unwrap();
             tx_env.gas_price = tx.gas_price;
             tx_env.gas_priority_fee = None;
             tx_env.transact_to = if let TransactionKind::Call(to_addr) = tx.to {
-                TransactTo::Call(to_addr)
+                TransactTo::Call(from_address(to_addr))
             } else {
                 TransactTo::create()
             };
@@ -293,15 +293,15 @@ pub fn fill_eth_tx_env(tx_env: &mut TxEnv, essence: &EthereumTxEssence, caller: 
             tx_env.data = tx.data.clone().into();
             tx_env.chain_id = Some(tx.chain_id);
             tx_env.nonce = Some(tx.nonce);
-            tx_env.access_list = tx.access_list.clone().into();
+            tx_env.access_list = to_access_list(tx.access_list.clone());
         }
         EthereumTxEssence::Eip1559(tx) => {
-            tx_env.caller = caller;
+            tx_env.caller = from_address(caller);
             tx_env.gas_limit = tx.gas_limit.try_into().unwrap();
             tx_env.gas_price = tx.max_fee_per_gas;
             tx_env.gas_priority_fee = Some(tx.max_priority_fee_per_gas);
             tx_env.transact_to = if let TransactionKind::Call(to_addr) = tx.to {
-                TransactTo::Call(to_addr)
+                TransactTo::Call(from_address(to_addr))
             } else {
                 TransactTo::create()
             };
@@ -309,7 +309,7 @@ pub fn fill_eth_tx_env(tx_env: &mut TxEnv, essence: &EthereumTxEssence, caller: 
             tx_env.data = tx.data.clone().into();
             tx_env.chain_id = Some(tx.chain_id);
             tx_env.nonce = Some(tx.nonce);
-            tx_env.access_list = tx.access_list.clone().into();
+            tx_env.access_list = to_access_list(tx.access_list.clone());
         }
     };
 }
@@ -325,7 +325,7 @@ where
 {
     // Read account from database
     let mut account: Account = db
-        .basic(address)
+        .basic(from_address(address))
         .map_err(|db_err| {
             anyhow!(
                 "Error increasing account balance for {}: {:?}",
@@ -339,7 +339,7 @@ where
     account.info.balance = account.info.balance.checked_add(amount_wei).unwrap();
     account.mark_touch();
     // Commit changes to database
-    db.commit([(address, account)].into());
+    db.commit([(from_address(address), account)].into());
 
     Ok(())
 }
