@@ -1,2 +1,2 @@
-# eigen-zknode
-Eigen zkVM Rust node 
+# eigen-zeth
+
