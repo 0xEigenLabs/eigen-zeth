@@ -6,3 +6,7 @@ edition = "2021"
 [dependencies]
 zeth-lib = { path = "../lib" }
 zeth-primitives = { path = "../primitives" }
+
+[target.'cfg(not(target_os = "zkvm"))'.dependencies]
+powdr = { git = "https://github.com/powdr-labs/powdr", rev = "450e3f1" }
+
