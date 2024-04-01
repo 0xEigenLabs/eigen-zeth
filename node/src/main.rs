@@ -38,22 +38,6 @@ async fn main() -> Result<()> {
 
     // Create/verify Groth16 SNARK
     //if cli.snark() {
-    //    let Some((stark_uuid, stark_receipt)) = stark else {
-    //        panic!("No STARK data to snarkify!");
-    //    };
-
-    //    if !cli.submit_to_bonsai() {
-    //        panic!("Bonsai submission flag required to create a SNARK!");
-    //    }
-
-    //    /*
-    //    let image_id = Digest::from(image_id);
-    //    let (snark_uuid, snark_receipt) = stark2snark(image_id, stark_uuid, stark_receipt).await?;
-
-    //    info!("Validating SNARK uuid: {}", snark_uuid);
-
-    //    verify_groth16_snark(&cli, image_id, snark_receipt).await?;
-    //    */
     //}
 
     Ok(())
