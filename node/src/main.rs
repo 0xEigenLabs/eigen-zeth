@@ -3,7 +3,7 @@ extern crate core;
 use anyhow::Result;
 use clap::Parser;
 use log::info;
-use zeth::{
+use zeth_node::{
     cli::{Cli, Network},
     operations::{build},
 };
