@@ -2,7 +2,7 @@
 name = "zeth-node"
 version = "0.1.0"
 edition = "2021"
-default-run = "zeth"
+default-run = "zeth-node"
 
 [dependencies]
 alloy-primitives = { version = "0.6.2", default-features = false, features = [
