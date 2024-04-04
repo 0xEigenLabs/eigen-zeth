@@ -1,0 +1,46 @@
+[package]
+name = "eigen-zeth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = "1.13"
+clap = { version = "4.0", features = ["derive"] }
+env_logger = "0.11"
+ethers-contract = { version = "2.0", features = ["optimism"] }
+ethers-core = { version = "2.0", features = ["optimism"] }
+ethers-providers = { version = "2.0", features = ["optimism"] }
+hex = "0.4.3"
+log = "0.4"
+serde = "1.0"
+tracing = { version = "0.1", features = ["log"] }
+tracing-subscriber = { version = "0.3", default-features = false }
+
+async-trait = "0.1"
+futures-core = { version = "0.3.21" }
+tokio-stream = { version = "0.1.9", features = ["sync"] }
+tokio = { version = "1.20", features = ["full", "rt"] }
+parking_lot = { version = "0.12.0", default-features = false, features = ["deadlock_detection"] }
+bytes = { version = "1.1", default-features = false }
+thiserror = "1"
+
+#devp2p-rs = { git = "https://github.com/rjected/devp2p-rs" }
+ethereum-forkid = { version = "0.11.0", default-features = false }
+#ethp2p = { git = "https://github.com/rjected/ethp2p" }
+anvil-core = { git = "https://github.com/foundry-rs/foundry" }
+open-fastrlp = { version = "0.1.4", features = ["alloc", "derive", "std"] }
+#ethers = { git = "https://github.com/gakonst/ethers-rs", features = ["abigen", "legacy", "ws"] }
+foundry-config = { git = "http://github.com/foundry-rs/foundry" }
+# for the capability name
+arrayvec = { version = "0.7" }
+
+# for the tower service
+tower = { version = "0.4", features = ["full"] }
+
+[dev-dependencies]
+ruint = { version = "1.3.0", features = ["fastrlp"] }
+hex-literal = "0.3.4"
+assert_cmd = "2.0"
+predicates = "3.0"
+rstest = "0.18"
+
