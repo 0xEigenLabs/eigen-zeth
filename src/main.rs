@@ -1,9 +1,9 @@
 use alloy_chains::Chain;
 use reth_node_builder::{
-        components::{ComponentsBuilder, PayloadServiceBuilder},
-        node::NodeTypes,
-        BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
-    };
+    components::{ComponentsBuilder, PayloadServiceBuilder},
+    node::NodeTypes,
+    BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
+};
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use reth_provider::{CanonStateSubscriptions, StateProviderFactory};
 use reth_tasks::TaskManager;
@@ -79,7 +79,9 @@ impl PayloadAttributes for CustomPayloadAttributes {
 
         // custom validation logic - ensure that the custom field is not zero
         if self.custom == 0 {
-            return Err(AttributesValidationError::invalid_params(CustomError::CustomFieldIsNotZero))
+            return Err(AttributesValidationError::invalid_params(
+                CustomError::CustomFieldIsNotZero,
+            ));
         }
 
         Ok(())
@@ -95,7 +97,10 @@ impl PayloadBuilderAttributes for CustomPayloadBuilderAttributes {
     type Error = Infallible;
 
     fn try_new(parent: B256, attributes: CustomPayloadAttributes) -> Result<Self, Infallible> {
-        Ok(Self(EthPayloadBuilderAttributes::new(parent, attributes.inner)))
+        Ok(Self(EthPayloadBuilderAttributes::new(
+            parent,
+            attributes.inner,
+        )))
     }
 
     fn payload_id(&self) -> PayloadId {
@@ -233,7 +238,8 @@ where
         let (payload_service, payload_builder) =
             PayloadBuilderService::new(payload_generator, ctx.provider().canonical_state_stream());
 
-        ctx.task_executor().spawn_critical("payload builder service", Box::pin(payload_service));
+        ctx.task_executor()
+            .spawn_critical("payload builder service", Box::pin(payload_service));
 
         Ok(payload_builder)
     }
@@ -256,7 +262,14 @@ where
         &self,
         args: BuildArguments<Pool, Client, Self::Attributes, Self::BuiltPayload>,
     ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
-        let BuildArguments { client, pool, cached_reads, config, cancel, best_payload } = args;
+        let BuildArguments {
+            client,
+            pool,
+            cached_reads,
+            config,
+            cancel,
+            best_payload,
+        } = args;
         let PayloadConfig {
             initialized_block_env,
             initialized_cfg,
@@ -319,8 +332,9 @@ async fn main() -> eyre::Result<()> {
         .build();
 
     // create node config
-    let node_config =
-        NodeConfig::test().with_rpc(RpcServerArgs::default().with_http()).with_chain(spec);
+    let node_config = NodeConfig::test()
+        .with_rpc(RpcServerArgs::default().with_http())
+        .with_chain(spec);
 
     let handle = NodeBuilder::new(node_config)
         .testing_node(tasks.executor())
