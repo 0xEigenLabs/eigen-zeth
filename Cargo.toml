@@ -1,0 +1,68 @@
+[package]
+name = "eigen-zeth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reth-tasks = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tasks", rev = "8cffebd72" }
+reth-rpc = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc", rev = "8cffebd72" }
+#reth-rpc-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-api", rev = "8cffebd72" }
+reth-rpc-types = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-types", rev = "8cffebd72" }
+reth-provider = { git = "https://github.com/0xEigenLabs/reth", package = "reth-provider", rev = "8cffebd72" }
+reth-transaction-pool = { git = "https://github.com/0xEigenLabs/reth", package = "reth-transaction-pool", rev = "8cffebd72" }
+reth-primitives = { git = "https://github.com/0xEigenLabs/reth", package = "reth-primitives", rev = "8cffebd72" }
+reth-tracing = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tracing", rev = "8cffebd72" }
+reth-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-payload-builder", rev = "8cffebd72" }
+reth-ethereum-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-ethereum-payload-builder", rev = "8cffebd72" }
+reth-basic-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-basic-payload-builder", rev = "8cffebd72" }
+reth-node-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-builder", rev = "8cffebd72" }
+reth-node-ethereum = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-ethereum", rev = "8cffebd72" }
+reth-node-core = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-core", rev = "8cffebd72" }
+reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-api", rev = "8cffebd72" }
+reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db", rev = "8cffebd72" }
+reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = "reth-blockchain-tree", rev = "8cffebd72" }
+
+#reth-payload-builder = { path = "../reth/crates/payload/builder" }
+#reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
+#reth-ethereum-payload-builder = { path = "../reth/crates/payload/ethereum" }
+#
+#reth-node-builder = { path = "../reth/crates/node-builder" }
+#reth-tasks = { path = "../reth/crates/tasks" }
+#reth-provider = { path = "../reth/crates/storage/provider" }
+#reth-transaction-pool = { path = "../reth/crates/transaction-pool" }
+#
+#reth-primitives = { path = "../reth/crates/primitives" }
+#reth-tracing = { path = "../reth/crates/tracing" }
+#reth-node-ethereum = { path = "../reth/crates/node-ethereum" }
+#reth-node-core = { path = "../reth/crates/node-core" }
+#reth-node-api = { path = "../reth/crates/node-api" }
+#reth-rpc-types = { path = "../reth/crates/rpc/rpc-types" }
+
+
+# Async
+futures = "0.3.26"
+tokio = { version = "1.28.2", features = ["full"] }
+async-trait = "0.1.68"
+
+# Misc
+eyre = "0.6.8"
+thiserror = "1.0.40"
+
+c-kzg = "0.4.2"
+
+jsonrpsee = { version = "0.20", features = ["server", "macros"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.94"
+serial_test = "2.0.0"
+
+# revm
+#revm = { version = "7.1.0", features = ["std", "secp256k1"] }
+#revm = { git = "https://github.com/bluealloy/revm", tag = "v34", features = ["std", "secp256k1"] }
+revm-primitives = { version = "3.0.0", features = ["std"], default-features = false }
+#revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev = "0ad0338" }
+
+# eth
+alloy-chains = { version = "0.1" }
+
+[dev-dependencies]
+pretty_assertions = "1.4.0"
