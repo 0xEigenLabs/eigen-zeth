@@ -5,19 +5,32 @@ use reth_node_builder::{
     BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
 };
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
-use reth_provider::{CanonStateSubscriptions, StateProviderFactory};
-use reth_tasks::TaskManager;
-use reth_transaction_pool::TransactionPool;
+use reth_primitives::ChainSpecBuilder;
+use reth_primitives::{Address, ChainSpec, Genesis, Header, Withdrawals, B256};
+use std::sync::Arc;
 
 use reth_basic_payload_builder::{
     BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig, BuildArguments, BuildOutcome,
     PayloadBuilder, PayloadConfig,
 };
+use reth_blockchain_tree::noop::NoopBlockchainTree;
+use reth_db::open_db_read_only;
 use reth_node_api::{
     validate_version_specific_fields, AttributesValidationError, EngineApiMessageVersion,
     EngineTypes, PayloadAttributes, PayloadBuilderAttributes, PayloadOrAttributes,
 };
+use reth_node_core::rpc::builder::{
+    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
+};
 use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
+use reth_provider::test_utils::TestCanonStateSubscriptions;
+use reth_provider::{
+    providers::{BlockchainProvider, ProviderFactory},
+    CanonStateSubscriptions, StateProviderFactory,
+};
+use reth_tasks::{TaskManager, TokioTaskExecutor};
+use reth_transaction_pool::TransactionPool;
+
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPoolBuilder},
     EthEvmConfig,
@@ -26,7 +39,6 @@ use reth_payload_builder::{
     error::PayloadBuilderError, EthBuiltPayload, EthPayloadBuilderAttributes, PayloadBuilderHandle,
     PayloadBuilderService,
 };
-use reth_primitives::{Address, ChainSpec, Genesis, Header, Withdrawals, B256};
 use reth_rpc_types::{
     engine::{
         ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
@@ -39,6 +51,9 @@ use reth_tracing::{RethTracer, Tracer};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
+
+mod rpc;
+use crate::rpc::EigenRpcExtApiServer;
 
 /// A custom payload attributes type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,14 +338,45 @@ async fn main() -> eyre::Result<()> {
     let tasks = TaskManager::current();
 
     // create optimism genesis with canyon at block 2
-    let spec = ChainSpec::builder()
-        .chain(Chain::mainnet())
-        .genesis(Genesis::default())
-        .london_activated()
-        .paris_activated()
-        .shanghai_activated()
-        .build();
+    //let spec = ChainSpec::builder()
+    //    .chain(Chain::mainnet())
+    //    .genesis(Genesis::default())
+    //    .london_activated()
+    //    .paris_activated()
+    //    .shanghai_activated()
+    //    .build();
+    let spec = Arc::new(ChainSpecBuilder::mainnet().build());
 
+    let db_path = std::env::var("RETH_DB_PATH")?;
+    let db_path = std::path::Path::new(&db_path);
+    let db = Arc::new(open_db_read_only(
+        db_path.join("db").as_path(),
+        Default::default(),
+    )?);
+    let factory = ProviderFactory::new(db.clone(), spec.clone(), db_path.join("static_files"))?;
+    let provider = BlockchainProvider::new(factory, NoopBlockchainTree::default())?;
+    let rpc_builder = RpcModuleBuilder::default()
+        .with_provider(provider.clone())
+        // Rest is just noops that do nothing
+        .with_noop_pool()
+        .with_noop_network()
+        .with_executor(TokioTaskExecutor::default())
+        .with_evm_config(EthEvmConfig::default())
+        .with_events(TestCanonStateSubscriptions::default());
+    let config = TransportRpcModuleConfig::default().with_http([RethRpcModule::Eth]);
+    let mut server = rpc_builder.build(config);
+    let custom_rpc = rpc::EigenRpcExt { provider };
+    server.merge_configured(custom_rpc.into_rpc())?;
+
+    // Start the server & keep it alive
+    let server_args =
+        RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
+    println!("Node started");
+    let handle = server_args.start(server).await?;
+    futures::future::pending::<()>().await;
+    Ok(())
+
+    /*
     // create node config
     let node_config = NodeConfig::test()
         .with_rpc(RpcServerArgs::default().with_http())
@@ -341,8 +387,6 @@ async fn main() -> eyre::Result<()> {
         .launch_node(MyCustomNode::default())
         .await
         .unwrap();
-
-    println!("Node started");
-
     handle.node_exit_future.await
+    */
 }
