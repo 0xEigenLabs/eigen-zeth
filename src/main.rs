@@ -52,6 +52,7 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
 
+mod prover;
 mod rpc;
 use crate::rpc::EigenRpcExtApiServer;
 
