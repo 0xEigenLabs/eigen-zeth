@@ -3,7 +3,9 @@
 * Init the chain and run the RPC-only node
 
 ```
-reth init --datadir /tmp/chain
+rm -rf /tmp/chain
+reth init --datadir /tmp/chain --chain testdata/chain.json
+
 RUST_LOG="rpc::eth=trace" RETH_DB_PATH=/tmp/chain cargo run  -r
 ```
 
