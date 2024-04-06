@@ -5,6 +5,7 @@
 ```
 rm -rf /tmp/chain
 reth init --datadir /tmp/chain --chain testdata/chain.json
+RUST_LOG="info" reth node -d --chain testdata/chain.json --datadir /tmp/chain --auto-mine --http --http.port 8546 --http.api admin,debug,eth,net,trace,txpool,web3,rpc,reth,ots,eth-call-bundle
 
 RUST_LOG="rpc::eth=trace" RETH_DB_PATH=/tmp/chain cargo run  -r
 ```
@@ -17,3 +18,10 @@ curl -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","metho
 curl -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","method":"eigenrpc_getBlockByNumber","params":[0],"id": 10}' 127.0.0.1:8545
 ```
 
+You can also use [cast](https://github.com/foundry-rs/foundry/releases).
+
+```
+cast rpc eigenrpc_customMethod
+
+cast rpc eigenrpc_getBlockByNumber 0
+```
