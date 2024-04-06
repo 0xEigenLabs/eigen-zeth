@@ -1,5 +1,5 @@
 // Reth block related imports
-use reth_primitives::{Block, H160};
+use reth_primitives::{Block, B256};
 use reth_provider::BlockReaderIdExt;
 
 // Rpc related imports
@@ -17,7 +17,7 @@ pub trait EigenRpcExtApi {
     #[method(name = "getBlockByNumber")]
     fn get_block_by_number(&self, block_no: u64) -> EthResult<Option<Block>>;
     #[method(name = "traceTransaction")]
-    fn trace_transaction(&self, hash: H160) -> EthResult<Option<()>>;
+    fn trace_transaction(&self, hash: B256) -> EthResult<Option<()>>;
 }
 
 /// The type that implements `EigenRpc` rpc namespace trait
@@ -44,9 +44,9 @@ where
     }
 
     // TODO return the pre and post data for zkvm
-    fn trace_transaction(&self, hash: H160) -> EthResult<Option<()>> {
+    fn trace_transaction(&self, _hash: B256) -> EthResult<Option<()>> {
+        println!("{:?}", _hash);
         //let traces = self.provider.trace
         Ok(Some(()))
     }
-
 }

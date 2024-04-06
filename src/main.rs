@@ -1,12 +1,11 @@
-use alloy_chains::Chain;
 use reth_node_builder::{
     components::{ComponentsBuilder, PayloadServiceBuilder},
     node::NodeTypes,
-    BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
+    BuilderContext, FullNodeTypes, Node, PayloadBuilderConfig,
 };
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use reth_primitives::ChainSpecBuilder;
-use reth_primitives::{Address, ChainSpec, Genesis, Header, Withdrawals, B256};
+use reth_primitives::{Address, ChainSpec, Header, Withdrawals, B256};
 use std::sync::Arc;
 
 use reth_basic_payload_builder::{
@@ -22,7 +21,6 @@ use reth_node_api::{
 use reth_node_core::rpc::builder::{
     RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
 };
-use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
 use reth_provider::test_utils::TestCanonStateSubscriptions;
 use reth_provider::{
     providers::{BlockchainProvider, ProviderFactory},
@@ -336,7 +334,7 @@ where
 async fn main() -> eyre::Result<()> {
     let _guard = RethTracer::new().init()?;
 
-    let tasks = TaskManager::current();
+    let _tasks = TaskManager::current();
 
     // create optimism genesis with canyon at block 2
     //let spec = ChainSpec::builder()
@@ -373,7 +371,7 @@ async fn main() -> eyre::Result<()> {
     let server_args =
         RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
     println!("Node started");
-    let handle = server_args.start(server).await?;
+    let _handle = server_args.start(server).await?;
     futures::future::pending::<()>().await;
     Ok(())
 
