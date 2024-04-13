@@ -26,7 +26,7 @@ use reth_provider::{
     providers::{BlockchainProvider, ProviderFactory},
     CanonStateSubscriptions, StateProviderFactory,
 };
-use reth_tasks::{TaskManager, TokioTaskExecutor};
+use reth_tasks::TokioTaskExecutor;
 use reth_transaction_pool::TransactionPool;
 
 use reth_node_ethereum::{
@@ -324,8 +324,9 @@ where
             attributes,
             chain_spec,
         } = config;
-        <reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(client,
-                                                                                                                       PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
+        <reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(
+            client,
+            PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
         )
     }
 }
@@ -333,9 +334,6 @@ where
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     let _guard = RethTracer::new().init()?;
-
-    let _tasks = TaskManager::current();
-
     // create optimism genesis with canyon at block 2
     //let spec = ChainSpec::builder()
     //    .chain(Chain::mainnet())
@@ -368,8 +366,9 @@ async fn main() -> eyre::Result<()> {
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive
+    let host = std::env::var("HOST").unwrap_or(":8545".to_string());
     let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
+        RpcServerConfig::http(Default::default()).with_http_address(host.parse()?);
     println!("Node started");
     let _handle = server_args.start(server).await?;
     futures::future::pending::<()>().await;
@@ -381,6 +380,7 @@ async fn main() -> eyre::Result<()> {
         .with_rpc(RpcServerArgs::default().with_http())
         .with_chain(spec);
 
+    let tasks = TaskManager::current();
     let handle = NodeBuilder::new(node_config)
         .testing_node(tasks.executor())
         .launch_node(MyCustomNode::default())
