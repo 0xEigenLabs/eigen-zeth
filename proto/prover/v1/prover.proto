@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package prover.v1;
+
+message Version {
+  string v0_0_1 = 1;
+}
+
+service AggregatorService {
+  rpc Channel(stream ProverMessage) returns (stream ProverMessage) {}
+}
+
+message ProverMessage
+{
+  string id = 1;
+  oneof message_type
+  {
+    GetStatusRequest get_status_request = 2;
+    GetStatusResponse get_status_response = 3;
+
+    GenBatchProofRequest gen_batch_proof_request = 4;
+    GenBatchProofResponse gen_batch_proof_response = 5;
+
+    GenAggregatedProofRequest gen_aggregated_proof_request = 6;
+    GenAggregatedProofResponse gen_aggregated_proof_response = 7;
+
+    GenFinalProofRequest gen_final_proof_request = 8;
+    GenFinalProofResponse gen_final_proof_response = 9;
+  }
+}
+
+// batch proof
+
+message GenBatchProofRequest {
+  string id = 1;
+  Batch batch = 2;
+}
+
+message Batch {
+  repeated uint64 block_number = 1;
+}
+
+message GenBatchProofResponse {
+  string id = 1;
+  string result_string = 2;
+  ProofResult result = 3;
+}
+
+// aggregated proof
+
+message GenAggregatedProofRequest {
+  string recursive_proof_1 = 1;
+  string recursive_proof_2 = 2;
+}
+
+message GenAggregatedProofResponse {
+  string id = 1;
+  string result_string = 2;
+  ProofResult result = 3;
+}
+
+// final proof
+
+message GenFinalProofRequest {
+  string recursive_proof = 1;
+  string aggregator_addr = 2;
+}
+
+message GenFinalProofResponse {
+  string id = 1;
+  FinalProof final_proof = 2;
+  string result_string = 3;
+  ProofResult result = 4;
+}
+
+message FinalProof {
+  string proof = 1;
+  PublicInputs public = 2;
+}
+
+message PublicInputs {
+  bytes old_state_root = 1;
+  bytes old_acc_input_hash = 2;
+  uint64 old_batch_num = 3;
+  uint64 chain_id = 4;
+  uint64 fork_id = 5;
+  bytes batch_l2_data = 6;
+  bytes global_exit_root = 7;
+  uint64 eth_timestamp = 8;
+  string sequencer_addr = 9;
+  string aggregator_addr = 10;
+}
+
+// proof result
+
+enum ProofResult {
+  RESULT_UNSPECIFIED = 0;
+  RESULT_COMPLETED_OK = 1;
+  RESULT_ERROR = 2;
+  RESULT_COMPLETED_ERROR = 3;
+  RESULT_PENDING = 4;
+  RESULT_INTERNAL_ERROR = 5;
+  RESULT_CANCEL = 6;
+}
+
+// get status
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_BOOTING = 1;
+    STATUS_COMPUTING = 2;
+    STATUS_IDLE = 3;
+    STATUS_HALT = 4;
+  }
+  Status status = 1;
+  string last_computed_request_id = 2;
+  uint64 last_computed_end_time = 3;
+  string current_computing_request_id = 4;
+  uint64 current_computing_start_time = 5;
+  string version_proto = 6;
+  string version_server = 7;
+  repeated string pending_request_queue_ids = 8;
+  string prover_name = 9;
+  string prover_id = 10;
+  uint64 number_of_cores = 11;
+  uint64 total_memory = 12;
+  uint64 free_memory = 13;
+}
