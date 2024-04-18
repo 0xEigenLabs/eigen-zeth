@@ -1791,6 +1791,7 @@ dependencies = [
  "reth-blockchain-tree",
  "reth-db",
  "reth-ethereum-payload-builder",
+ "reth-libmdbx",
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",

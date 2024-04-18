@@ -52,6 +52,7 @@ use thiserror::Error;
 
 mod prover;
 mod rpc;
+mod aggregator;
 use crate::rpc::EigenRpcExtApiServer;
 
 /// A custom payload attributes type.
