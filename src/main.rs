@@ -50,9 +50,9 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
 
+mod aggregator;
 mod prover;
 mod rpc;
-mod aggregator;
 use crate::rpc::EigenRpcExtApiServer;
 
 /// A custom payload attributes type.
@@ -368,8 +368,7 @@ async fn main() -> eyre::Result<()> {
 
     // Start the server & keep it alive
     let host = std::env::var("HOST").unwrap_or(":8545".to_string());
-    let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address(host.parse()?);
+    let server_args = RpcServerConfig::http(Default::default()).with_http_address(host.parse()?);
     println!("Node started");
     let _handle = server_args.start(server).await?;
     futures::future::pending::<()>().await;
