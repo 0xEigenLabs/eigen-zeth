@@ -52,7 +52,16 @@ use thiserror::Error;
 
 mod prover;
 mod rpc;
-use crate::rpc::EigenRpcExtApiServer;
+mod settlement;
+
+mod cli;
+mod da;
+mod db;
+mod service;
+
+mod batchproposer;
+
+use crate::rpc::eigen::EigenRpcExtApiServer;
 
 /// A custom payload attributes type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -364,7 +373,7 @@ async fn main() -> eyre::Result<()> {
         .with_events(TestCanonStateSubscriptions::default());
     let config = TransportRpcModuleConfig::default().with_http([RethRpcModule::Eth]);
     let mut server = rpc_builder.build(config);
-    let custom_rpc = rpc::EigenRpcExt { provider };
+    let custom_rpc = rpc::eigen::EigenRpcExt { provider };
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive
