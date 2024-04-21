@@ -1854,6 +1854,7 @@ dependencies = [
  "eyre",
  "futures",
  "jsonrpsee",
+ "kvdb-memorydb",
  "log",
  "pretty_assertions",
  "prost",
@@ -1861,6 +1862,7 @@ dependencies = [
  "reth-blockchain-tree",
  "reth-db",
  "reth-ethereum-payload-builder",
+ "reth-libmdbx",
  "reth-node-api",
  "reth-node-builder",
  "reth-node-core",
@@ -3252,6 +3254,25 @@ checksum = "bb8515fff80ed850aea4a1595f2e519c003e2a00a82fe168ebf5269196caf444"
 dependencies = [
  "digest 0.10.7",
  "sha3-asm",
+]
+
+[[package]]
+name = "kvdb"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7d770dcb02bf6835887c3a979b5107a04ff4bbde97a5f0928d27404a155add9"
+dependencies = [
+ "smallvec",
+]
+
+[[package]]
+name = "kvdb-memorydb"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf7a85fe66f9ff9cd74e169fdd2c94c6e1e74c412c99a73b4df3200b5d3760b2"
+dependencies = [
+ "kvdb",
+ "parking_lot 0.12.1",
 ]
 
 [[package]]

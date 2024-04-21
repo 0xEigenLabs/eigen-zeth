@@ -22,6 +22,10 @@ reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-n
 reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db", rev = "8cffebd72" }
 reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = "reth-blockchain-tree", rev = "8cffebd72" }
 
+# Database
+reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
+kvdb-memorydb = "0.13.0"
+
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
 #reth-ethereum-payload-builder = { path = "../reth/crates/payload/ethereum" }
