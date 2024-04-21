@@ -11,8 +11,8 @@ use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
 use crate::prover::provider::prover_service::{
-    Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest,
-    ProofResultStatus, ProverRequest,
+    Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest, ProofResultCode,
+    ProverRequest,
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -122,24 +122,22 @@ impl ProveSMT {
                 ProveStep::Batch(batch) => {
                     let request = ProverRequest {
                         id: "".to_string(),
-                        request_type: Some(RequestType::GenBatchProofRequest(
-                            GenBatchProofRequest {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                batch: Some(Batch {
-                                    block_number: vec![*batch],
-                                }),
-                            },
-                        )),
+                        request_type: Some(RequestType::GenBatchProof(GenBatchProofRequest {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            batch: Some(Batch {
+                                block_number: vec![*batch],
+                            }),
+                        })),
                     };
                     // send request to the endpoint
                     self.endpoint.send_request(request).await?;
 
                     // waiting for the response from the endpoint
-                    if let Some(ResponseType::GenBatchProofResponse(gen_batch_proof_response)) =
+                    if let Some(ResponseType::GenBatchProof(gen_batch_proof_response)) =
                         self.response_receiver.recv().await
                     {
                         if gen_batch_proof_response.result_code
-                            == ProofResultStatus::ResultCompletedOk as i32
+                            == ProofResultCode::CompletedOk as i32
                         {
                             let chunks = gen_batch_proof_response
                                 .batch_proof_result
@@ -159,7 +157,7 @@ impl ProveSMT {
                 ProveStep::Aggregate(start_chunk, end_chunk) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
-                        request_type: Some(RequestType::GenAggregatedProofRequest(
+                        request_type: Some(RequestType::GenAggregatedProof(
                             GenAggregatedProofRequest {
                                 recursive_proof_1: start_chunk.clone(),
                                 recursive_proof_2: end_chunk.clone(),
@@ -170,12 +168,11 @@ impl ProveSMT {
                     self.endpoint.send_request(request).await?;
 
                     // waiting for the response from the endpoint
-                    if let Some(ResponseType::GenAggregatedProofResponse(
-                        gen_aggregated_proof_response,
-                    )) = self.response_receiver.recv().await
+                    if let Some(ResponseType::GenAggregatedProof(gen_aggregated_proof_response)) =
+                        self.response_receiver.recv().await
                     {
                         if gen_aggregated_proof_response.result_code
-                            == ProofResultStatus::ResultCompletedOk as i32
+                            == ProofResultCode::CompletedOk as i32
                         {
                             let recursive_proof = gen_aggregated_proof_response.result_string;
                             ProveStep::Final(recursive_proof)
@@ -190,24 +187,22 @@ impl ProveSMT {
                 ProveStep::Final(recursive_proof) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
-                        request_type: Some(RequestType::GenFinalProofRequest(
-                            GenFinalProofRequest {
-                                recursive_proof: recursive_proof.clone(),
-                                // TODO: from config or env
-                                curve_name: "".to_string(),
-                                // TODO: what's the aggregator address?
-                                aggregator_addr: "".to_string(),
-                            },
-                        )),
+                        request_type: Some(RequestType::GenFinalProof(GenFinalProofRequest {
+                            recursive_proof: recursive_proof.clone(),
+                            // TODO: from config or env
+                            curve_name: "".to_string(),
+                            // TODO: what's the aggregator address?
+                            aggregator_addr: "".to_string(),
+                        })),
                     };
                     self.endpoint.send_request(request).await?;
 
                     // waiting for the response from the endpoint
-                    if let Some(ResponseType::GenFinalProofResponse(gen_final_proof_response)) =
+                    if let Some(ResponseType::GenFinalProof(gen_final_proof_response)) =
                         self.response_receiver.recv().await
                     {
                         if gen_final_proof_response.result_code
-                            == ProofResultStatus::ResultCompletedOk as i32
+                            == ProofResultCode::CompletedOk as i32
                         {
                             ProveStep::End
                         } else {
@@ -308,18 +303,18 @@ impl ProverEndpoint {
                     if let Some(recv_msg) = recv_msg_result? {
                         if let Some(msg_type) = recv_msg.response_type {
                             match msg_type {
-                                ResponseType::GetStatusResponse(r) => {
+                                ResponseType::GetStatus(r) => {
                                     // TODO: Get Prover Status
                                     log::info!("GetStatusResponse: {:?}", r);
                                 }
-                                ResponseType::GenBatchProofResponse(r) => {
-                                    self.response_sender.send(ResponseType::GenBatchProofResponse(r)).await?;
+                                ResponseType::GenBatchProof(r) => {
+                                    self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
                                 }
-                                ResponseType::GenAggregatedProofResponse(r) => {
-                                    self.response_sender.send(ResponseType::GenAggregatedProofResponse(r)).await?;
+                                ResponseType::GenAggregatedProof(r) => {
+                                    self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
                                 }
-                                ResponseType::GenFinalProofResponse(r) => {
-                                    self.response_sender.send(ResponseType::GenFinalProofResponse(r)).await?;
+                                ResponseType::GenFinalProof(r) => {
+                                    self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
                                 }
                             }
                         }
