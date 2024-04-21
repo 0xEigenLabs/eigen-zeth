@@ -4,13 +4,15 @@
 //!    the proof generation request to proof network;
 //! 2) Keep polling if the task is finished.
 //! 3) If the task is finished, update the status into proof database, hence the extended RPC module will fetch this and return it to SDK.
+// TODO: Fix me
+#![allow(dead_code)]
 
 use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
 use crate::prover::provider::prover_service::{
     Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest,
-    ProofResultStatus, ProverRequest, ProverResponse,
+    ProofResultStatus, ProverRequest,
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -58,7 +60,7 @@ pub struct ProveSMT {
     /// the endpoint to communicate with the prover
     endpoint: ProverEndpoint,
 
-    ///
+    /// used to receive response from the endpoint
     response_receiver: Receiver<ResponseType>,
 }
 
@@ -113,7 +115,7 @@ impl ProveSMT {
         loop {
             self.step = match &self.step {
                 ProveStep::Start => {
-                    let batch = self.current_batch.unwrap().clone();
+                    let batch = self.current_batch.unwrap();
                     ProveStep::Batch(batch)
                 }
 
@@ -209,9 +211,15 @@ impl ProveSMT {
                         {
                             ProveStep::End
                         } else {
+                            // TODO: return error
+                            log::error!(
+                                "gen final proof failed, error: {:?}",
+                                gen_final_proof_response.error_message
+                            );
                             ProveStep::End
                         }
                     } else {
+                        log::error!("gen final proof failed, no response");
                         ProveStep::End
                     }
                 }
@@ -252,7 +260,7 @@ pub struct ProverEndpoint {
     /// listen to the stop signal, and stop the endpoint loop
     stop_endpoint_rx: Receiver<()>,
 
-    ///
+    /// used to send response to the ProveSMT
     response_sender: Sender<ResponseType>,
 }
 

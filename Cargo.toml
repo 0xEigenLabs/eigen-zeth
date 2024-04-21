@@ -24,7 +24,6 @@ reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = 
 
 # Database
 reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
-kvdb-memorydb = "0.13.0"
 
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }

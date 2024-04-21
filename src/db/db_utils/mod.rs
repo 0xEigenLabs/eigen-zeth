@@ -1,35 +1,32 @@
-mod memory_kvdb;
+// TODO: Fix me
+#![allow(dead_code)]
+
 mod libmdbx;
+mod mem;
 
-use std::path::PathBuf;
-
-use db::Database as EigenDB;
 use crate::db;
+use db::Database as EigenDB;
 
 pub(crate) enum DBConfig {
     /// memory kv-database
     Memory,
     /// libmdbx database
-    MDBX {
+    Mdbx {
         /// Path to the mdbx database
-        path: PathBuf,
-        // path: String,
+        // path: PathBuf,
+        path: String,
     },
 }
 
-// TODO: 
-
-
-pub(crate) fn open_db(config: &DBConfig) -> Result<EigenDB, ()> {
-    
+pub(crate) fn open_db(config: &DBConfig) -> Result<Box<dyn EigenDB>, ()> {
+    match config {
+        DBConfig::Memory => open_memory_db(),
+        DBConfig::Mdbx { .. } => {
+            unimplemented!("open_mdbx_db")
+        }
+    }
 }
 
-
-fn open_mdbx_db(path: &PathBuf) -> Result<EigenDB, ()> {
-    let db = libmdbx::Database::open(path);
-    Ok(EigenDB::MDBX(db))
+fn open_memory_db() -> Result<Box<dyn EigenDB>, ()> {
+    Ok(Box::new(mem::Db::default()))
 }
-
-// 
-// fn open_memory_db() -> Result<EigenDB, ()> {
-// }
