@@ -22,6 +22,9 @@ reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-n
 reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db", rev = "8cffebd72" }
 reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = "reth-blockchain-tree", rev = "8cffebd72" }
 
+# Database
+reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
+
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
 #reth-ethereum-payload-builder = { path = "../reth/crates/payload/ethereum" }
@@ -43,6 +46,7 @@ reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = 
 futures = "0.3.26"
 tokio = { version = "1.28.2", features = ["full"] }
 async-trait = "0.1.68"
+tokio-stream = { version = "0.1" }
 
 # Misc
 eyre = "0.6.8"
@@ -61,8 +65,24 @@ serial_test = "2.0.0"
 revm-primitives = { version = "3.0.0", features = ["std"], default-features = false }
 #revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev = "0ad0338" }
 
+# tonic
+tonic = "0.8.1"
+prost = "0.11.0"
+
+#log
+log = "0.4.0"
+env_logger = "0.10"
+
+# uuid
+uuid = { version = "1.2", features = ["v4", "fast-rng", "macro-diagnostics"] }
+
 # eth
 alloy-chains = { version = "0.1" }
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+
+
+
+[build-dependencies]
+tonic-build = "0.8.0"
