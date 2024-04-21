@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 mod data_availability_db;
-mod db_utils;
+pub(crate) mod lfs;
 
 /// TODO: we need a trait to abstract the database operations in order to support multiple databases
 

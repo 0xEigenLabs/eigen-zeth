@@ -14,6 +14,9 @@ use crate::prover::provider::prover_service::{
     Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest, ProofResultCode,
     ProverRequest,
 };
+use prost::Message;
+use std::fmt;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_stream::wrappers::ReceiverStream;
@@ -22,46 +25,21 @@ pub mod prover_service {
     tonic::include_proto!("prover.v1"); // The string specified here must match the proto package name
 }
 
-/// ProverProvider is used to generate proof for the batch
-pub struct ProverProvider {
-    /// prove SMT, Call the Prover step by step to generate proof for the batch
-    inner: ProveSMT,
-}
-
-impl ProverProvider {
-    pub fn new() -> Self {
-        let addr = std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50051".to_string());
-        ProverProvider {
-            inner: ProveSMT::new(addr),
-        }
-    }
-
-    /// start the prover
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.inner.start().await
-    }
-
-    /// stop the prover
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.inner.stop().await
-    }
-
-    /// generate proof for the batch
-    pub async fn prove(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
-        self.inner.execute(batch).await
-    }
-}
-
-/// ProveSMT ...
-pub struct ProveSMT {
+/// ProverChannel ...
+#[derive(Debug)]
+pub struct ProverChannel {
     step: ProveStep,
     /// the current batch to prove
     current_batch: Option<BlockNumber>,
+    parent_batch: Option<BlockNumber>,
     /// the endpoint to communicate with the prover
     endpoint: ProverEndpoint,
 
     /// used to receive response from the endpoint
     response_receiver: Receiver<ResponseType>,
+
+    /// final proof
+    final_proof_sender: Sender<Vec<u8>>,
 }
 
 type BlockNumber = u64;
@@ -70,6 +48,7 @@ type EndChunk = String;
 type RecursiveProof = String;
 
 /// ProveStep ...
+#[derive(Debug)]
 enum ProveStep {
     Start,
     // TODO: refactor to Batch
@@ -79,14 +58,28 @@ enum ProveStep {
     End,
 }
 
-impl ProveSMT {
-    pub fn new(addr: String) -> Self {
+impl fmt::Display for ProveStep {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ProveStep::Start => write!(f, "♥ stark"),
+            ProveStep::Batch(no) => write!(f, "♦ Batch: {}", no),
+            ProveStep::Aggregate(s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
+            ProveStep::Final(r) => write!(f, "♣ Final: {:?}", r),
+            ProveStep::End => write!(f, "🌹"),
+        }
+    }
+}
+
+impl ProverChannel {
+    pub fn new(addr: &str, sender: Sender<Vec<u8>>) -> Self {
         let (response_sender, response_receiver) = mpsc::channel(10);
-        ProveSMT {
+        ProverChannel {
             step: ProveStep::Start,
             current_batch: None,
+            parent_batch: None,
             endpoint: ProverEndpoint::new(addr, response_sender),
             response_receiver,
+            final_proof_sender: sender,
         }
     }
 
@@ -101,17 +94,18 @@ impl ProveSMT {
     }
 
     pub async fn execute(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_current_batch(batch).await?;
+        log::debug!("execute batch {batch}");
+        self.set_current_batch(batch)?;
 
         // return proof for the batch
         self.entry_step().await?;
 
-        self.clean_current_batch().await?;
+        self.clean_current_batch()?;
 
         Ok(())
     }
 
-    pub async fn entry_step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn entry_step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         loop {
             self.step = match &self.step {
                 ProveStep::Start => {
@@ -204,6 +198,13 @@ impl ProveSMT {
                         if gen_final_proof_response.result_code
                             == ProofResultCode::CompletedOk as i32
                         {
+                            let mut final_proof = vec![];
+                            gen_final_proof_response
+                                .final_proof
+                                .unwrap()
+                                .encode(&mut final_proof)
+                                .unwrap();
+                            self.final_proof_sender.send(final_proof).await?;
                             ProveStep::End
                         } else {
                             // TODO: return error
@@ -225,24 +226,31 @@ impl ProveSMT {
                     return Ok(());
                 }
             };
+            log::debug!("Status: {:?}, {}", self.current_batch, self.step);
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }
 
-    pub async fn set_current_batch(
-        &mut self,
-        batch: BlockNumber,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn set_current_batch(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
+        self.step = ProveStep::Start;
+        self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = Some(batch);
         Ok(())
     }
 
-    pub async fn clean_current_batch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn clean_current_batch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = None;
         Ok(())
+    }
+
+    pub fn get_current_batch(&self) -> Option<u64> {
+        self.current_batch
     }
 }
 
 /// ProverEndpoint used to communicate with the prover
+#[derive(Debug)]
 pub struct ProverEndpoint {
     /// the address of the prover
     addr: String,
@@ -255,16 +263,16 @@ pub struct ProverEndpoint {
     /// listen to the stop signal, and stop the endpoint loop
     stop_endpoint_rx: Receiver<()>,
 
-    /// used to send response to the ProveSMT
+    /// used to send response to the ProverChannel
     response_sender: Sender<ResponseType>,
 }
 
 impl ProverEndpoint {
-    pub fn new(addr: String, response_sender: Sender<ResponseType>) -> Self {
+    pub fn new(addr: &str, response_sender: Sender<ResponseType>) -> Self {
         let (request_sender, request_receiver) = mpsc::channel(10);
         let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverEndpoint {
-            addr,
+            addr: addr.to_string(),
             request_sender,
             request_receiver: Some(request_receiver),
             stop_endpoint_tx: stop_tx,

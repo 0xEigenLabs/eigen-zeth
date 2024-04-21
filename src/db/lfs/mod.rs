@@ -4,8 +4,7 @@
 mod libmdbx;
 mod mem;
 
-use crate::db;
-use db::Database as EigenDB;
+use crate::db::Database as EigenDB;
 
 pub(crate) enum DBConfig {
     /// memory kv-database
@@ -18,7 +17,7 @@ pub(crate) enum DBConfig {
     },
 }
 
-pub(crate) fn open_db(config: &DBConfig) -> Result<Box<dyn EigenDB>, ()> {
+pub(crate) fn open_db(config: DBConfig) -> Result<Box<dyn EigenDB>, ()> {
     match config {
         DBConfig::Memory => open_memory_db(),
         DBConfig::Mdbx { .. } => {
