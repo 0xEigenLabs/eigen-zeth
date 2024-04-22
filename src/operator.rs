@@ -36,6 +36,9 @@ impl Operator {
         let batch_key = "next_batch".to_string().as_bytes().to_vec();
         let proof_key = "batch_proof".to_string().as_bytes().to_vec();
 
+        // start the endpoint
+        self.prover.start().await.unwrap();
+
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
