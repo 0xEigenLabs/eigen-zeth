@@ -1,3 +1,4 @@
+use crate::db::lfs::mem;
 use crate::db::Database as EigenDB;
 use std::collections::HashMap;
 
@@ -16,4 +17,8 @@ impl EigenDB for Db {
     fn del(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
         self.0.remove(&key)
     }
+}
+
+pub fn open_memory_db() -> Result<Box<dyn EigenDB>, ()> {
+    Ok(Box::new(mem::Db::default()))
 }
