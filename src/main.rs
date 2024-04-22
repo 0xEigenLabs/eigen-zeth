@@ -360,6 +360,7 @@ async fn main() -> eyre::Result<()> {
 
     tokio::spawn(async move {
         #[allow(clippy::let_underscore_future)]
+        #[allow(clippy::never_loop)]
         loop {
             select! {
                 _ = sigterm.recv() => {
