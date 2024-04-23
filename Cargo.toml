@@ -42,6 +42,7 @@ reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-li
 #reth-rpc-types = { path = "../reth/crates/rpc/rpc-types" }
 ethers-providers = { version = "2.0.14", features = ["ws"] }
 ethers-core = { version = "2.0.14", default-features = false }
+ethers-contract = { version = "2.0.14", features = ["abigen"] }
 
 
 # Async
