@@ -349,7 +349,7 @@ where
 async fn main() -> eyre::Result<()> {
     env_logger::init();
     let db_path = std::env::var("ZETH_OPERATOR_DB")?;
-    let l1addr = std::env::var("ZETH_L1_ADDR")?;
+    let l1addr = std::env::var("ZETH_L2_ADDR")?;
     let prover_addr = std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string());
     let mut op = operator::Operator::new(&db_path, &l1addr, &prover_addr);
 

@@ -62,7 +62,7 @@ enum ProveStep {
 impl fmt::Display for ProveStep {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ProveStep::Start => write!(f, "♥ stark"),
+            ProveStep::Start => write!(f, "♥ Start"),
             ProveStep::Batch(no) => write!(f, "♦ Batch: {}", no),
             ProveStep::Aggregate(s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
             ProveStep::Final(r) => write!(f, "♣ Final: {:?}", r),
@@ -222,8 +222,7 @@ impl ProverChannel {
                             gen_final_proof_response
                                 .final_proof
                                 .unwrap()
-                                .encode(&mut final_proof)
-                                .unwrap();
+                                .encode(&mut final_proof)?;
                             self.final_proof_sender.send(final_proof).await?;
                             ProveStep::End
                         } else {
