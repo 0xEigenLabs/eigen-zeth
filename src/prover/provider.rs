@@ -33,8 +33,9 @@ pub struct ProverChannel {
     current_batch: Option<BlockNumber>,
     parent_batch: Option<BlockNumber>,
     /// the endpoint to communicate with the prover
-    endpoint: ProverEndpoint,
+    endpoint: Option<ProverEndpoint>,
 
+    request_sender: Sender<ProverRequest>,
     /// used to receive response from the endpoint
     response_receiver: Receiver<ResponseType>,
 
@@ -73,11 +74,13 @@ impl fmt::Display for ProveStep {
 impl ProverChannel {
     pub fn new(addr: &str, sender: Sender<Vec<u8>>) -> Self {
         let (response_sender, response_receiver) = mpsc::channel(10);
+        let (request_sender, request_receiver) = mpsc::channel(10);
         ProverChannel {
             step: ProveStep::Start,
             current_batch: None,
             parent_batch: None,
-            endpoint: ProverEndpoint::new(addr, response_sender),
+            endpoint: Some(ProverEndpoint::new(addr, response_sender, request_receiver)),
+            request_sender,
             response_receiver,
             final_proof_sender: sender,
         }
@@ -85,7 +88,24 @@ impl ProverChannel {
 
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // start the endpoint
-        self.endpoint.launch().await
+        // self.endpoint.launch().await;
+
+        // take the endpoint, and spawn a new task
+        // the self.endpoint will be None after this
+        // TODO: handle the error, and relaunch the endpoint
+        let mut endpoint = self.endpoint.take().unwrap();
+        tokio::spawn(async move {
+            match endpoint.launch().await {
+                Ok(_) => {
+                    log::info!("ProverEndpoint stopped");
+                }
+                Err(e) => {
+                    log::error!("ProverEndpoint error: {:?}", e);
+                }
+            }
+        });
+
+        Ok(())
     }
 
     pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -124,7 +144,7 @@ impl ProverChannel {
                         })),
                     };
                     // send request to the endpoint
-                    self.endpoint.send_request(request).await?;
+                    self.request_sender.send(request).await?;
 
                     // waiting for the response from the endpoint
                     if let Some(ResponseType::GenBatchProof(gen_batch_proof_response)) =
@@ -159,7 +179,7 @@ impl ProverChannel {
                         )),
                     };
                     // send request to the endpoint
-                    self.endpoint.send_request(request).await?;
+                    self.request_sender.send(request).await?;
 
                     // waiting for the response from the endpoint
                     if let Some(ResponseType::GenAggregatedProof(gen_aggregated_proof_response)) =
@@ -189,7 +209,7 @@ impl ProverChannel {
                             aggregator_addr: "".to_string(),
                         })),
                     };
-                    self.endpoint.send_request(request).await?;
+                    self.request_sender.send(request).await?;
 
                     // waiting for the response from the endpoint
                     if let Some(ResponseType::GenFinalProof(gen_final_proof_response)) =
@@ -255,7 +275,7 @@ pub struct ProverEndpoint {
     /// the address of the prover
     addr: String,
     /// used to send request to the gRPC client
-    request_sender: Sender<ProverRequest>,
+    // request_sender: Sender<ProverRequest>,
     /// used to receive request, and send to ProverServer
     request_receiver: Option<Receiver<ProverRequest>>,
     /// used to stop the endpoint
@@ -268,12 +288,14 @@ pub struct ProverEndpoint {
 }
 
 impl ProverEndpoint {
-    pub fn new(addr: &str, response_sender: Sender<ResponseType>) -> Self {
-        let (request_sender, request_receiver) = mpsc::channel(10);
+    pub fn new(
+        addr: &str,
+        response_sender: Sender<ResponseType>,
+        request_receiver: Receiver<ProverRequest>,
+    ) -> Self {
         let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverEndpoint {
             addr: addr.to_string(),
-            request_sender,
             request_receiver: Some(request_receiver),
             stop_endpoint_tx: stop_tx,
             stop_endpoint_rx: stop_rx,
@@ -282,17 +304,19 @@ impl ProverEndpoint {
     }
 
     /// send request to the gRPC Stream
-    pub async fn send_request(
-        &mut self,
-        request: ProverRequest,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.request_sender.send(request).await?;
-        Ok(())
-    }
+    // pub async fn send_request(
+    //     &mut self,
+    //     request: ProverRequest,
+    // ) -> Result<(), Box<dyn std::error::Error>> {
+    //     self.request_sender.send(request).await?;
+    //     Ok(())
+    // }
 
     /// launch the endpoint
     pub async fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let mut client = ProverServiceClient::connect(self.addr.clone()).await?;
+
+        log::info!("ProverEndpoint connected to {}", self.addr);
 
         // take the request receiver, create a stream
         // self.request_receiver will be None after this
@@ -316,12 +340,15 @@ impl ProverEndpoint {
                                     log::info!("GetStatusResponse: {:?}", r);
                                 }
                                 ResponseType::GenBatchProof(r) => {
+                                    log::info!("GenBatchProofResponse: {:?}", r);
                                     self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
                                 }
                                 ResponseType::GenAggregatedProof(r) => {
+                                    log::info!("GenAggregatedProofResponse: {:?}", r);
                                     self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
                                 }
                                 ResponseType::GenFinalProof(r) => {
+                                    log::info!("GenFinalProofResponse: {:?}", r);
                                     self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
                                 }
                             }
