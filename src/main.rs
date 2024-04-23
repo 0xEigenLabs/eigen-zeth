@@ -57,11 +57,16 @@ mod settlement;
 mod cli;
 mod da;
 mod db;
-mod service;
+mod operator;
 
 mod batchproposer;
 
 use crate::rpc::eigen::EigenRpcExtApiServer;
+
+use tokio::select;
+use tokio::signal::unix::signal;
+use tokio::signal::unix::SignalKind;
+use tokio::sync::mpsc;
 
 /// A custom payload attributes type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -333,14 +338,44 @@ where
             attributes,
             chain_spec,
         } = config;
-        <reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(client,
-                                                                                                                       PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
+        <reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(
+            client,
+            PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
         )
     }
 }
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
+    env_logger::init();
+    let db_path = std::env::var("ZETH_OPERATOR_DB")?;
+    let l1addr = std::env::var("ZETH_L2_ADDR")?;
+    let prover_addr = std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string());
+    let mut op = operator::Operator::new(&db_path, &l1addr, &prover_addr);
+
+    let mut sigterm = signal(SignalKind::terminate()).unwrap();
+    let mut sigint = signal(SignalKind::interrupt()).unwrap();
+
+    let (stop_tx, stop_rx) = mpsc::channel::<()>(1);
+
+    tokio::spawn(async move {
+        #[allow(clippy::let_underscore_future)]
+        #[allow(clippy::never_loop)]
+        loop {
+            select! {
+                _ = sigterm.recv() => {
+                    println!("Recieve SIGTERM");
+                    break;
+                }
+                _ = sigint.recv() => {
+                    println!("Recieve SIGTERM");
+                    break;
+                }
+            };
+        }
+        stop_tx.send(()).await.unwrap();
+    });
+
     let _guard = RethTracer::new().init()?;
 
     let _tasks = TaskManager::current();
@@ -355,7 +390,7 @@ async fn main() -> eyre::Result<()> {
     //    .build();
     let spec = Arc::new(ChainSpecBuilder::mainnet().build());
 
-    let db_path = std::env::var("RETH_DB_PATH")?;
+    let db_path = std::env::var("ZETH_DB_PATH")?;
     let db_path = std::path::Path::new(&db_path);
     let db = Arc::new(open_db_read_only(
         db_path.join("db").as_path(),
@@ -377,11 +412,14 @@ async fn main() -> eyre::Result<()> {
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive
-    let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address("0.0.0.0:8545".parse()?);
+    let host = std::env::var("HOST").unwrap_or(":8545".to_string());
+    let server_args = RpcServerConfig::http(Default::default()).with_http_address(host.parse()?);
     println!("Node started");
     let _handle = server_args.start(server).await?;
-    futures::future::pending::<()>().await;
+
+    //    futures::future::pending::<()>().await;
+
+    op.run(stop_rx).await;
     Ok(())
 
     /*

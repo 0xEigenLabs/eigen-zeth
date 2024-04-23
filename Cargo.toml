@@ -40,6 +40,8 @@ reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-li
 #reth-node-core = { path = "../reth/crates/node-core" }
 #reth-node-api = { path = "../reth/crates/node-api" }
 #reth-rpc-types = { path = "../reth/crates/rpc/rpc-types" }
+ethers-providers = { version = "2.0.14", features = ["ws"] }
+ethers-core = { version = "2.0.14", default-features = false }
 
 
 # Async
