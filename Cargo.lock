@@ -1868,6 +1868,7 @@ dependencies = [
  "futures",
  "jsonrpsee",
  "log",
+ "once_cell",
  "pretty_assertions",
  "prost",
  "reth-basic-payload-builder",

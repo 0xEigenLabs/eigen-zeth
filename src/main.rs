@@ -60,9 +60,11 @@ mod db;
 mod operator;
 
 mod batchproposer;
+mod env;
 
 use crate::rpc::eigen::EigenRpcExtApiServer;
 
+use crate::env::EIGEN_ZETH_ENV;
 use tokio::select;
 use tokio::signal::unix::signal;
 use tokio::signal::unix::SignalKind;
@@ -348,10 +350,12 @@ where
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     env_logger::init();
-    let db_path = std::env::var("ZETH_OPERATOR_DB")?;
-    let l1addr = std::env::var("ZETH_L2_ADDR")?;
-    let prover_addr = std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string());
-    let mut op = operator::Operator::new(&db_path, &l1addr, &prover_addr);
+
+    let mut op = operator::Operator::new(
+        &EIGEN_ZETH_ENV.db_path,
+        &EIGEN_ZETH_ENV.l1addr,
+        &EIGEN_ZETH_ENV.prover_addr,
+    );
 
     let mut sigterm = signal(SignalKind::terminate()).unwrap();
     let mut sigint = signal(SignalKind::interrupt()).unwrap();
@@ -412,8 +416,8 @@ async fn main() -> eyre::Result<()> {
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive
-    let host = std::env::var("HOST").unwrap_or(":8545".to_string());
-    let server_args = RpcServerConfig::http(Default::default()).with_http_address(host.parse()?);
+    let server_args =
+        RpcServerConfig::http(Default::default()).with_http_address(EIGEN_ZETH_ENV.host.parse()?);
     println!("Node started");
     let _handle = server_args.start(server).await?;
 
