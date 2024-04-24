@@ -23,7 +23,7 @@ pub(crate) struct Operator {
 
 impl Operator {
     pub fn new(_db_path: &str, l1addr: &str, prover_addr: &str) -> Self {
-        let (sx, rx) = mpsc::channel(10);
+        let (sx, rx_proof) = mpsc::channel(10);
         let prover = ProverChannel::new(prover_addr, sx);
         let db = lfs::open_db(lfs::DBConfig::Memory).unwrap();
         // TODO: abstract this in the settlement
@@ -37,7 +37,7 @@ impl Operator {
             db,
             provider,
             settler,
-            rx_proof: rx,
+            rx_proof,
         }
     }
 
