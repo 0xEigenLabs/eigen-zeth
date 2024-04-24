@@ -1875,6 +1875,7 @@ name = "eigen-zeth"
 version = "0.1.0"
 dependencies = [
  "alloy-chains",
+ "anyhow",
  "async-trait",
  "c-kzg",
  "env_logger",
