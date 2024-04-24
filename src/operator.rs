@@ -2,18 +2,24 @@
 //! They will be launched in Run CMD.
 use crate::prover::ProverChannel;
 use ethers_providers::{Http, Provider};
-
+use crate::settlement::{NetworkSpec, Settlement};
+use ethers_core::types::{Bytes, H160, U256};
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::time::{interval, Duration};
+use std::sync::Arc;
 
 use crate::db::{lfs, Database};
+use crate::settlement::ethereum::EthereumSettlement;
 
 pub(crate) struct Operator {
     db: Box<dyn Database>,
     prover: ProverChannel,
-    _settler: Provider<Http>,
+    provider: Arc<Provider<Http>>,
     rx_proof: Receiver<Vec<u8>>,
+    // TODO: use trait object
+    settler: EthereumSettlement, 
 }
+
 
 impl Operator {
     pub fn new(_db_path: &str, l1addr: &str, prover_addr: &str) -> Self {
@@ -21,12 +27,16 @@ impl Operator {
         let prover = ProverChannel::new(prover_addr, sx);
         let db = lfs::open_db(lfs::DBConfig::Memory).unwrap();
         // TODO: abstract this in the settlement
-        let _settler = Provider::<Http>::try_from(l1addr).unwrap();
+        let provider = Provider::<Http>::try_from(l1addr).unwrap();
+        let provider = Arc::new(provider);
 
+        //let settler = init_settlement(NetworkSpec::Ethereum); 
+        let settler = EthereumSettlement{}; 
         Operator {
             prover,
             db,
-            _settler,
+            provider,
+            settler,
             rx_proof: rx,
         }
     }
@@ -72,6 +82,9 @@ impl Operator {
                         self.prover.execute(block_no).await.unwrap();
                         let block_no_next = block_no + 1;
                         self.db.put(batch_key.clone(), block_no_next.to_be_bytes().to_vec());
+
+                        // TODO
+                        let _ = self.settler.bridge_asset(H160::zero(), self.provider.clone(), 0, H160::zero(), U256::zero(), H160::zero(), true, Bytes::default()).await;
                     } else {
                         log::debug!("Wait for the new task coming in");
                     }

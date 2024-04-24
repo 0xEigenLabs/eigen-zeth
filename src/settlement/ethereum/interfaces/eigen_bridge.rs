@@ -3,6 +3,7 @@ use ethers_contract::abigen;
 use ethers_core::types::{Address, Bytes, U256};
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
+use anyhow::Result;
 
 // example: https://github.com/gakonst/ethers-rs/blob/master/examples/contracts/examples/abigen.rs#L55
 abigen!(
@@ -14,8 +15,7 @@ abigen!(
     ]"#,
 );
 
-#[allow(dead_code)]
-pub async fn bridge_asset(
+pub(crate) async fn bridge_asset(
     address: Address,
     client: Arc<Provider<Http>>,
     destination_network: u32,
@@ -24,7 +24,7 @@ pub async fn bridge_asset(
     token: Address,
     force_update_global_exit_root: bool,
     calldata: Bytes,
-) {
+) -> Result<()> {
     let contract = EigenBridge::new(address, client);
 
     if let Ok(result) = contract
@@ -41,4 +41,5 @@ pub async fn bridge_asset(
     {
         log::debug!("bridge asset {result:?}");
     }
+    Ok(())
 }
