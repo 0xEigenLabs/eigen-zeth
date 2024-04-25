@@ -394,8 +394,8 @@ async fn main() -> eyre::Result<()> {
     //    .build();
     let spec = Arc::new(ChainSpecBuilder::mainnet().build());
 
-    let db_path = std::env::var("ZETH_DB_PATH")?;
-    let db_path = std::path::Path::new(&db_path);
+    // let db_path =;
+    let db_path = std::path::Path::new(&GLOBAL_ENV.zeth_db_path);
     let db = Arc::new(open_db_read_only(
         db_path.join("db").as_path(),
         Default::default(),

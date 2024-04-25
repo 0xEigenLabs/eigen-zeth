@@ -1,12 +1,16 @@
 //! Initialize all components of the eigen-zeth full node.
 //! They will be launched in Run CMD.
+
+// TODO: Fixme
+#![allow(unused_imports)]
+
 use crate::prover::ProverChannel;
-use ethers_providers::{Http, Provider};
 use crate::settlement::{NetworkSpec, Settlement};
 use ethers_core::types::{Bytes, H160, U256};
+use ethers_providers::{Http, Provider};
+use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::time::{interval, Duration};
-use std::sync::Arc;
 
 use crate::db::{lfs, Database};
 use crate::settlement::ethereum::EthereumSettlement;
@@ -17,9 +21,8 @@ pub(crate) struct Operator {
     provider: Arc<Provider<Http>>,
     rx_proof: Receiver<Vec<u8>>,
     // TODO: use trait object
-    settler: EthereumSettlement, 
+    settler: EthereumSettlement,
 }
-
 
 impl Operator {
     pub fn new(_db_path: &str, l1addr: &str, prover_addr: &str) -> Self {
@@ -30,8 +33,8 @@ impl Operator {
         let provider = Provider::<Http>::try_from(l1addr).unwrap();
         let provider = Arc::new(provider);
 
-        //let settler = init_settlement(NetworkSpec::Ethereum); 
-        let settler = EthereumSettlement{}; 
+        //let settler = init_settlement(NetworkSpec::Ethereum);
+        let settler = EthereumSettlement {};
         Operator {
             prover,
             db,
