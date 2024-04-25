@@ -1,9 +1,9 @@
 //! Rust contract client for https://github.com/0xEigenLabs/eigen-bridge-contracts/blob/feature/bridge_contract/src/EigenBridge.sol
+use anyhow::Result;
 use ethers_contract::abigen;
 use ethers_core::types::{Address, Bytes, U256};
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
-use anyhow::Result;
 
 // example: https://github.com/gakonst/ethers-rs/blob/master/examples/contracts/examples/abigen.rs#L55
 abigen!(
@@ -15,6 +15,8 @@ abigen!(
     ]"#,
 );
 
+// TODO: Fixme
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn bridge_asset(
     address: Address,
     client: Arc<Provider<Http>>,

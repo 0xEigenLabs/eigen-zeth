@@ -28,6 +28,7 @@ impl Settlement for EthereumSettlement {
             token,
             force_update_global_exit_root,
             calldata,
-        ).await
+        )
+        .await
     }
 }
