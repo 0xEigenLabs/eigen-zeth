@@ -44,6 +44,8 @@ ethers-providers = { version = "2.0.14", features = ["ws"] }
 ethers-core = { version = "2.0.14", default-features = false }
 ethers-contract = { version = "2.0.14", features = ["abigen"] }
 
+# lazy_static
+once_cell = "1.8.0"
 
 # Async
 futures = "0.3.26"
