@@ -7,7 +7,7 @@
 // TODO: Fix me
 #![allow(dead_code)]
 
-use crate::env::EIGEN_ZETH_ENV;
+use crate::env::GLOBAL_ENV;
 use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
@@ -204,8 +204,8 @@ impl ProverChannel {
                         id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenFinalProof(GenFinalProofRequest {
                             recursive_proof: recursive_proof.clone(),
-                            curve_name: EIGEN_ZETH_ENV.curve_type.clone(),
-                            aggregator_addr: EIGEN_ZETH_ENV.host.clone(),
+                            curve_name: GLOBAL_ENV.curve_type.clone(),
+                            aggregator_addr: GLOBAL_ENV.host.clone(),
                         })),
                     };
                     self.request_sender.send(request).await?;

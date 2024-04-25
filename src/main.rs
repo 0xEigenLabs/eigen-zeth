@@ -64,7 +64,7 @@ mod env;
 
 use crate::rpc::eigen::EigenRpcExtApiServer;
 
-use crate::env::EIGEN_ZETH_ENV;
+use crate::env::GLOBAL_ENV;
 use tokio::select;
 use tokio::signal::unix::signal;
 use tokio::signal::unix::SignalKind;
@@ -352,9 +352,9 @@ async fn main() -> eyre::Result<()> {
     env_logger::init();
 
     let mut op = operator::Operator::new(
-        &EIGEN_ZETH_ENV.db_path,
-        &EIGEN_ZETH_ENV.l1addr,
-        &EIGEN_ZETH_ENV.prover_addr,
+        &GLOBAL_ENV.db_path,
+        &GLOBAL_ENV.l1addr,
+        &GLOBAL_ENV.prover_addr,
     );
 
     let mut sigterm = signal(SignalKind::terminate()).unwrap();
@@ -417,7 +417,7 @@ async fn main() -> eyre::Result<()> {
 
     // Start the server & keep it alive
     let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address(EIGEN_ZETH_ENV.host.parse()?);
+        RpcServerConfig::http(Default::default()).with_http_address(GLOBAL_ENV.host.parse()?);
     println!("Node started");
     let _handle = server_args.start(server).await?;
 
