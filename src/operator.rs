@@ -5,7 +5,7 @@
 #![allow(unused_imports)]
 
 use crate::prover::ProverChannel;
-use crate::settlement::{NetworkSpec, Settlement};
+use crate::settlement::{init_settlement, NetworkSpec, Settlement};
 use ethers_core::types::{Bytes, H160, U256};
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
@@ -13,32 +13,29 @@ use tokio::sync::mpsc::{self, Receiver};
 use tokio::time::{interval, Duration};
 
 use crate::db::{lfs, Database};
-use crate::settlement::ethereum::EthereumSettlement;
+use crate::env::GLOBAL_ENV;
+use crate::settlement::ethereum::{EthereumSettlement, EthereumSettlementConfig};
 
 pub(crate) struct Operator {
     db: Box<dyn Database>,
     prover: ProverChannel,
-    provider: Arc<Provider<Http>>,
     rx_proof: Receiver<Vec<u8>>,
-    // TODO: use trait object
-    settler: EthereumSettlement,
+    settler: Box<dyn Settlement>,
 }
 
 impl Operator {
-    pub fn new(_db_path: &str, l1addr: &str, prover_addr: &str) -> Self {
+    pub fn new(_db_path: &str, _l1addr: &str, prover_addr: &str) -> Self {
         let (sx, rx_proof) = mpsc::channel(10);
         let prover = ProverChannel::new(prover_addr, sx);
         let db = lfs::open_db(lfs::DBConfig::Memory).unwrap();
-        // TODO: abstract this in the settlement
-        let provider = Provider::<Http>::try_from(l1addr).unwrap();
-        let provider = Arc::new(provider);
 
-        //let settler = init_settlement(NetworkSpec::Ethereum);
-        let settler = EthereumSettlement {};
+        let settler = init_settlement(NetworkSpec::Ethereum(EthereumSettlementConfig {
+            eth_settlement_env: GLOBAL_ENV.settlement.eth_env.clone(),
+        }));
+        // let settler = EthereumSettlement {};
         Operator {
             prover,
             db,
-            provider,
             settler,
             rx_proof,
         }
@@ -87,13 +84,13 @@ impl Operator {
                         self.db.put(batch_key.clone(), block_no_next.to_be_bytes().to_vec());
 
                         // TODO
-                        let _ = self.settler.bridge_asset(H160::zero(), self.provider.clone(), 0, H160::zero(), U256::zero(), H160::zero(), true, Bytes::default()).await;
+                        let _ = self.settler.bridge_asset(0, H160::zero(), U256::zero(), H160::zero(), true, Bytes::default()).await;
                     } else {
                         log::debug!("Wait for the new task coming in");
                     }
                 }
                 _ = stop_channel.recv() => {
-                    break;
+                    self.prover.stop().await.unwrap();
                 }
             };
         }

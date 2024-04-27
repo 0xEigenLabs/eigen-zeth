@@ -42,6 +42,9 @@ pub struct ProverChannel {
 
     /// final proof
     final_proof_sender: Sender<Vec<u8>>,
+
+    /// used to stop the endpoint
+    stop_endpoint_tx: Sender<()>,
 }
 
 type BlockNumber = u64;
@@ -76,14 +79,21 @@ impl ProverChannel {
     pub fn new(addr: &str, sender: Sender<Vec<u8>>) -> Self {
         let (response_sender, response_receiver) = mpsc::channel(10);
         let (request_sender, request_receiver) = mpsc::channel(10);
+        let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverChannel {
             step: ProveStep::Start,
             current_batch: None,
             parent_batch: None,
-            endpoint: Some(ProverEndpoint::new(addr, response_sender, request_receiver)),
+            endpoint: Some(ProverEndpoint::new(
+                addr,
+                response_sender,
+                request_receiver,
+                stop_rx,
+            )),
             request_sender,
             response_receiver,
             final_proof_sender: sender,
+            stop_endpoint_tx: stop_tx,
         }
     }
 
@@ -111,6 +121,8 @@ impl ProverChannel {
 
     pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // stop the endpoint
+        self.stop_endpoint_tx.send(()).await?;
+
         Ok(())
     }
 
@@ -278,8 +290,8 @@ pub struct ProverEndpoint {
     // request_sender: Sender<ProverRequest>,
     /// used to receive request, and send to ProverServer
     request_receiver: Option<Receiver<ProverRequest>>,
-    /// used to stop the endpoint
-    stop_endpoint_tx: Sender<()>,
+    // /// used to stop the endpoint
+    // stop_endpoint_tx: Sender<()>,
     /// listen to the stop signal, and stop the endpoint loop
     stop_endpoint_rx: Receiver<()>,
 
@@ -292,12 +304,11 @@ impl ProverEndpoint {
         addr: &str,
         response_sender: Sender<ResponseType>,
         request_receiver: Receiver<ProverRequest>,
+        stop_rx: Receiver<()>,
     ) -> Self {
-        let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverEndpoint {
             addr: addr.to_string(),
             request_receiver: Some(request_receiver),
-            stop_endpoint_tx: stop_tx,
             stop_endpoint_rx: stop_rx,
             response_sender,
         }
@@ -359,9 +370,9 @@ impl ProverEndpoint {
         }
     }
 
-    /// stop the endpoint
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.stop_endpoint_tx.send(()).await?;
-        Ok(())
-    }
+    // stop the endpoint
+    // pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    //     self.stop_endpoint_tx.send(()).await?;
+    //     Ok(())
+    // }
 }
