@@ -1,3 +1,3 @@
-pub(crate) mod eigen_bridge;
-pub(crate) mod eigen_global_exit_root;
-mod eigen_zkvm;
+pub(crate) mod bridge;
+pub(crate) mod global_exit_root;
+mod zkvm;

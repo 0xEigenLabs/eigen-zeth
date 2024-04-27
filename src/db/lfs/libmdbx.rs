@@ -93,8 +93,8 @@ mod tests {
     }
 
     #[test]
-    fn test_eigen_mdbx() {
-        let path = "tmp/test_eigen_mdbx_dn";
+    fn test_mdbx() {
+        let path = "tmp/test_mdbx_db";
         let max_dbs = 20;
         let mut db = open_mdbx_db(path, max_dbs).unwrap();
 

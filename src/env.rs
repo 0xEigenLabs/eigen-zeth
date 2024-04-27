@@ -4,7 +4,7 @@ use once_cell::sync::Lazy;
 use std::string::ToString;
 
 /// EigenZethEnv is a struct that holds the environment variables
-pub struct EigenZethEnv {
+pub struct GlobalEnv {
     pub db_path: String,
     pub l1addr: String,
     pub prover_addr: String,
@@ -38,14 +38,14 @@ pub struct LocalWalletConfig {
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct EthContractsAddr {
-    pub eigen_bridge: String,
-    pub eigen_global_exit: String,
-    pub eigen_zkvm: String,
+    pub bridge: String,
+    pub global_exit: String,
+    pub zkvm: String,
 }
 
-/// EIGEN_ZETH_ENV is a global variable that holds the environment variables,
+/// GLOBAL_ENV is a global variable that holds the environment variables,
 /// it is lazy loaded and thread safe
-pub static GLOBAL_ENV: Lazy<EigenZethEnv> = Lazy::new(|| EigenZethEnv {
+pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
     db_path: std::env::var("ZETH_OPERATOR_DB").unwrap_or("/tmp/operator".to_string()),
     l1addr: std::env::var("ZETH_L2_ADDR").unwrap_or("http://localhost:8546".to_string()),
     prover_addr: std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string()),
@@ -72,11 +72,10 @@ pub static GLOBAL_ENV: Lazy<EigenZethEnv> = Lazy::new(|| EigenZethEnv {
                     .unwrap(),
             },
             l1_contracts_addr: EthContractsAddr {
-                eigen_bridge: std::env::var("EIGEN_BRIDGE_CONTRACT_ADDR")
+                bridge: std::env::var("ZETH_BRIDGE_CONTRACT_ADDR").unwrap_or("0x".to_string()),
+                global_exit: std::env::var("ZETH_GLOBAL_EXIT_CONTRACT_ADDR")
                     .unwrap_or("0x".to_string()),
-                eigen_global_exit: std::env::var("EIGEN_GLOBAL_EXIT_CONTRACT_ADDR")
-                    .unwrap_or("0x".to_string()),
-                eigen_zkvm: std::env::var("EIGEN_ZKVM_CONTRACT_ADDR").unwrap_or("0x".to_string()),
+                zkvm: std::env::var("ZETH_ZKVM_CONTRACT_ADDR").unwrap_or("0x".to_string()),
             },
         },
     },

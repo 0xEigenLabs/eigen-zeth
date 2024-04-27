@@ -14,7 +14,7 @@ pub(crate) mod ethereum;
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait Settlement {
-    // eigen_bridge
+    // bridge
 
     async fn bridge_asset(
         &self,
@@ -62,7 +62,7 @@ pub trait Settlement {
         metadata: Bytes,
     ) -> Result<()>;
 
-    // eigen_global_exit_root
+    // global_exit_root
 
     async fn update_global_exit_root(&self, new_root: [u8; 32]) -> Result<()>;
 

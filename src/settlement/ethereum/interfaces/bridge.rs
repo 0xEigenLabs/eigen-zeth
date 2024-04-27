@@ -18,15 +18,15 @@ abigen!(
     ]"#,
 );
 
-pub struct EigenBridgeContractClient {
+pub struct BridgeContractClient {
     contract: EigenBridge<SignerMiddleware<Provider<Http>, LocalWallet>>,
 }
 
-impl EigenBridgeContractClient {
+impl BridgeContractClient {
     pub fn new(contract_address: Address, provider: Provider<Http>, wallet: LocalWallet) -> Self {
         let client = SignerMiddleware::new(provider, wallet);
         let contract = EigenBridge::new(contract_address, Arc::new(client));
-        EigenBridgeContractClient { contract }
+        BridgeContractClient { contract }
     }
 
     // TODO: Fixme
@@ -51,6 +51,8 @@ impl EigenBridgeContractClient {
                 calldata,
             )
             .send()
+            .await?
+            .inspect(|s| log::info!("pending bridge asset transaction: {:?}", **s))
             .await
         {
             log::debug!("bridge asset {result:?}");

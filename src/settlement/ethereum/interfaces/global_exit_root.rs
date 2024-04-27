@@ -15,15 +15,15 @@ abigen!(
     ]"#,
 );
 
-pub struct EigenGlobalExitRootContractClient {
+pub struct GlobalExitRootContractClient {
     contract: EigenGlobalExitRoot<SignerMiddleware<Provider<Http>, LocalWallet>>,
 }
 
-impl EigenGlobalExitRootContractClient {
+impl GlobalExitRootContractClient {
     pub fn new(contract_address: Address, provider: Provider<Http>, wallet: LocalWallet) -> Self {
         let client = SignerMiddleware::new(provider, wallet);
         let contract = EigenGlobalExitRoot::new(contract_address, Arc::new(client));
-        EigenGlobalExitRootContractClient { contract }
+        GlobalExitRootContractClient { contract }
     }
 
     pub async fn update_exit_root(&self, new_rollup_exit_root: [u8; 32]) -> Result<()> {
