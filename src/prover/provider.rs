@@ -142,6 +142,8 @@ impl ProverChannel {
                             batch: Some(Batch {
                                 block_number: vec![*batch],
                             }),
+                            chain_id: GLOBAL_ENV.chain_id,
+                            program_name: GLOBAL_ENV.program_name.clone(),
                         })),
                     };
                     // send request to the endpoint
