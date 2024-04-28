@@ -76,9 +76,9 @@ pub enum NetworkSpec {
     Optimism,
 }
 
-pub fn init_settlement(spec: NetworkSpec) -> Box<dyn Settlement> {
+pub fn init_settlement(spec: NetworkSpec) -> Result<Box<dyn Settlement>> {
     match spec {
-        NetworkSpec::Ethereum(config) => Box::new(ethereum::EthereumSettlement::new(config)),
+        NetworkSpec::Ethereum(config) => Ok(Box::new(ethereum::EthereumSettlement::new(config)?)),
         _ => todo!("Not supported network"),
     }
 }

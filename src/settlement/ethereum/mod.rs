@@ -1,48 +1,100 @@
 use crate::settlement::Settlement;
+use std::path::Path;
 pub(crate) mod interfaces;
-use crate::env::EthereumEnv;
 use crate::settlement::ethereum::interfaces::bridge::BridgeContractClient;
 use crate::settlement::ethereum::interfaces::global_exit_root::GlobalExitRootContractClient;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use config::{Config, File};
 use ethers::signers::{LocalWallet, Signer};
 use ethers_core::k256::elliptic_curve::SecretKey;
 use ethers_core::types::{Address, Bytes, U256};
 use ethers_core::utils::hex;
 use ethers_providers::{Http, Provider};
+use serde::Deserialize;
 
 pub struct EthereumSettlement {
     pub bridge_client: BridgeContractClient,
     pub global_exit_root_client: GlobalExitRootContractClient,
 }
 
+#[derive(Debug, Deserialize)]
 pub struct EthereumSettlementConfig {
-    pub eth_settlement_env: EthereumEnv,
+    pub provider_url: String,
+    pub local_wallet: LocalWalletConfig,
+    pub l1_contracts_addr: EthContractsAddr,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LocalWalletConfig {
+    pub private_key: String,
+    pub chain_id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EthContractsAddr {
+    pub bridge: String,
+    pub global_exit: String,
+    pub zkvm: String,
+}
+
+impl EthereumSettlementConfig {
+    pub fn from_conf_path(conf_path: &str) -> Result<Self> {
+        log::info!("Load the Ethereum settlement config from: {}", conf_path);
+
+        let config = Config::builder()
+            .add_source(File::from(Path::new(conf_path)))
+            .build()
+            .map_err(|e| anyhow!("Failed to build config: {:?}", e))?;
+
+        config
+            .get("ethereum_settlement_config")
+            .map_err(|e| anyhow!("Failed to parse EthereumSettlementConfig: {:?}", e))
+    }
 }
 
 impl EthereumSettlement {
-    pub fn new(config: EthereumSettlementConfig) -> Self {
-        let provider = Provider::<Http>::try_from(&config.eth_settlement_env.provider_url).unwrap();
-        let kye_bytes = hex::decode(&config.eth_settlement_env.local_wallet.private_key).unwrap();
-        let secret_key = SecretKey::from_slice(&kye_bytes).unwrap();
-        let local_wallet: LocalWallet = LocalWallet::from(secret_key)
-            .with_chain_id(config.eth_settlement_env.local_wallet.chain_id);
+    pub fn new(config: EthereumSettlementConfig) -> Result<Self> {
+        let provider = Provider::<Http>::try_from(&config.provider_url).map_err(|e| {
+            anyhow!(
+                "Failed to create provider from URL {}: {:?}",
+                config.provider_url,
+                e
+            )
+        })?;
 
-        let bridge_address: Address = config
-            .eth_settlement_env
-            .l1_contracts_addr
-            .bridge
-            .parse()
-            .unwrap();
+        let kye_bytes = hex::decode(&config.local_wallet.private_key).map_err(|e| {
+            anyhow!(
+                "Failed to decode private key {}: {:?}",
+                config.local_wallet.private_key,
+                e
+            )
+        })?;
 
-        let global_exit_root_address: Address = config
-            .eth_settlement_env
-            .l1_contracts_addr
-            .global_exit
-            .parse()
-            .unwrap();
+        let secret_key = SecretKey::from_slice(&kye_bytes)
+            .map_err(|e| anyhow!("Failed to parse secret key: {:?}", e))?;
 
-        EthereumSettlement {
+        let local_wallet: LocalWallet =
+            LocalWallet::from(secret_key).with_chain_id(config.local_wallet.chain_id);
+
+        let bridge_address: Address = config.l1_contracts_addr.bridge.parse().map_err(|e| {
+            anyhow!(
+                "Failed to parse bridge address {}: {:?}",
+                config.l1_contracts_addr.bridge,
+                e
+            )
+        })?;
+
+        let global_exit_root_address: Address =
+            config.l1_contracts_addr.global_exit.parse().map_err(|e| {
+                anyhow!(
+                    "Failed to parse global exit root address {}: {:?}",
+                    config.l1_contracts_addr.global_exit,
+                    e
+                )
+            })?;
+
+        Ok(EthereumSettlement {
             bridge_client: BridgeContractClient::new(
                 bridge_address,
                 provider.clone(),
@@ -53,7 +105,7 @@ impl EthereumSettlement {
                 provider,
                 local_wallet.clone(),
             ),
-        }
+        })
     }
 }
 

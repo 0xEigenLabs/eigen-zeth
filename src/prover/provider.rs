@@ -7,7 +7,7 @@
 // TODO: Fix me
 #![allow(dead_code)]
 
-use crate::env::GLOBAL_ENV;
+use crate::config::env::GLOBAL_ENV;
 use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
@@ -15,6 +15,7 @@ use crate::prover::provider::prover_service::{
     Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest, ProofResultCode,
     ProverRequest,
 };
+use anyhow::{anyhow, Result};
 use prost::Message;
 use std::fmt;
 use std::time::Duration;
@@ -97,7 +98,7 @@ impl ProverChannel {
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&mut self) -> Result<()> {
         // start the endpoint
         // self.endpoint.launch().await;
 
@@ -119,14 +120,16 @@ impl ProverChannel {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn stop(&mut self) -> Result<()> {
         // stop the endpoint
-        self.stop_endpoint_tx.send(()).await?;
-
-        Ok(())
+        Ok(self
+            .stop_endpoint_tx
+            .send(())
+            .await
+            .map_err(|e| anyhow!("Failed to stop the endpoint: {:?}", e))?)
     }
 
-    pub async fn execute(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn execute(&mut self, batch: BlockNumber) -> Result<()> {
         log::debug!("execute batch {batch}");
         self.set_current_batch(batch)?;
 
@@ -138,7 +141,7 @@ impl ProverChannel {
         Ok(())
     }
 
-    async fn entry_step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn entry_step(&mut self) -> Result<()> {
         loop {
             self.step = match &self.step {
                 ProveStep::Start => {
@@ -263,14 +266,14 @@ impl ProverChannel {
         }
     }
 
-    fn set_current_batch(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
+    fn set_current_batch(&mut self, batch: BlockNumber) -> Result<()> {
         self.step = ProveStep::Start;
         self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = Some(batch);
         Ok(())
     }
 
-    fn clean_current_batch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn clean_current_batch(&mut self) -> Result<()> {
         self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = None;
         Ok(())
@@ -318,13 +321,13 @@ impl ProverEndpoint {
     // pub async fn send_request(
     //     &mut self,
     //     request: ProverRequest,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
+    // ) -> Result<()> {
     //     self.request_sender.send(request).await?;
     //     Ok(())
     // }
 
     /// launch the endpoint
-    pub async fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn launch(&mut self) -> Result<()> {
         let mut client = ProverServiceClient::connect(self.addr.clone()).await?;
 
         log::info!("ProverEndpoint connected to {}", self.addr);
@@ -371,7 +374,7 @@ impl ProverEndpoint {
     }
 
     // stop the endpoint
-    // pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    // pub async fn stop(&mut self) -> Result<()> {
     //     self.stop_endpoint_tx.send(()).await?;
     //     Ok(())
     // }

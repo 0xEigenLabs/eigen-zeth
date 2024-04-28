@@ -6,14 +6,15 @@
 
 use crate::prover::ProverChannel;
 use crate::settlement::{init_settlement, NetworkSpec, Settlement};
+use anyhow::{anyhow, Result};
 use ethers_core::types::{Bytes, H160, U256};
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
 use tokio::sync::mpsc::{self, Receiver};
 use tokio::time::{interval, Duration};
 
+use crate::config::env::GLOBAL_ENV;
 use crate::db::{lfs, Database};
-use crate::env::GLOBAL_ENV;
 use crate::settlement::ethereum::{EthereumSettlement, EthereumSettlementConfig};
 
 pub(crate) struct Operator {
@@ -24,24 +25,32 @@ pub(crate) struct Operator {
 }
 
 impl Operator {
-    pub fn new(_db_path: &str, _l1addr: &str, prover_addr: &str) -> Self {
+    pub fn new(
+        db_path: &str,
+        _l1addr: &str,
+        prover_addr: &str,
+        settlement_spec: NetworkSpec,
+    ) -> Result<Self> {
         let (sx, rx_proof) = mpsc::channel(10);
         let prover = ProverChannel::new(prover_addr, sx);
-        let db = lfs::open_db(lfs::DBConfig::Memory).unwrap();
+        let db = lfs::open_db(lfs::DBConfig::Mdbx {
+            path: db_path.to_string(),
+            max_dbs: 10,
+        })
+        .map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
 
-        let settler = init_settlement(NetworkSpec::Ethereum(EthereumSettlementConfig {
-            eth_settlement_env: GLOBAL_ENV.settlement.eth_env.clone(),
-        }));
-        // let settler = EthereumSettlement {};
-        Operator {
+        let settler = init_settlement(settlement_spec)
+            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
+
+        Ok(Operator {
             prover,
             db,
             settler,
             rx_proof,
-        }
+        })
     }
 
-    pub async fn run(&mut self, mut stop_channel: Receiver<()>) {
+    pub async fn run(&mut self, mut stop_channel: Receiver<()>) -> Result<()> {
         let mut ticker = interval(Duration::from_millis(1000));
         let batch_key = "next_batch".to_string().as_bytes().to_vec();
         let proof_key = "batch_proof".to_string().as_bytes().to_vec();
