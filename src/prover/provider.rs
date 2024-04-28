@@ -143,7 +143,7 @@ impl ProverChannel {
                                 block_number: vec![*batch],
                             }),
                             chain_id: GLOBAL_ENV.chain_id,
-                            chain_vm_type: GLOBAL_ENV.chain_vm_type.clone(),
+                            program_name: GLOBAL_ENV.program_name.clone(),
                         })),
                     };
                     // send request to the endpoint

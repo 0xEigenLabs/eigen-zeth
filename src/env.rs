@@ -10,7 +10,7 @@ pub struct EigenZethEnv {
     pub curve_type: String,
     pub host: String,
     pub chain_id: u64,
-    pub chain_vm_type: String,
+    pub program_name: String,
 }
 
 /// EIGEN_ZETH_ENV is a global variable that holds the environment variables,
@@ -25,7 +25,7 @@ pub static GLOBAL_ENV: Lazy<EigenZethEnv> = Lazy::new(|| EigenZethEnv {
         .unwrap_or("12345".to_string())
         .parse::<u64>()
         .unwrap(),
-    chain_vm_type: std::env::var("CHAIN_VM_TYPE")
+    program_name: std::env::var("PROGRAM_NAME")
         .unwrap_or("EVM".to_string())
         .to_lowercase(),
 });
