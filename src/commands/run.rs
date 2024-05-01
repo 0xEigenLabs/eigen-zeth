@@ -99,7 +99,7 @@ impl RunCmd {
                     ));
                 }
                 Some(settlement_conf_path) => NetworkSpec::Ethereum(
-                    EthereumSettlementConfig::from_conf_path(&settlement_conf_path)?,
+                    EthereumSettlementConfig::from_conf_path(settlement_conf_path)?,
                 ),
             },
         };

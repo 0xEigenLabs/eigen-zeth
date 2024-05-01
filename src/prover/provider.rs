@@ -122,11 +122,10 @@ impl ProverChannel {
 
     pub async fn stop(&mut self) -> Result<()> {
         // stop the endpoint
-        Ok(self
-            .stop_endpoint_tx
+        self.stop_endpoint_tx
             .send(())
             .await
-            .map_err(|e| anyhow!("Failed to stop the endpoint: {:?}", e))?)
+            .map_err(|e| anyhow!("Failed to stop the endpoint: {:?}", e))
     }
 
     pub async fn execute(&mut self, batch: BlockNumber) -> Result<()> {
