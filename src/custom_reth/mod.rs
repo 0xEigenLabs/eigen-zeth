@@ -51,10 +51,11 @@ use std::convert::Infallible;
 use thiserror::Error;
 
 use crate::config::env::GLOBAL_ENV;
-use crate::rpc;
+use crate::custom_reth::eigen::EigenRpcExt;
+use crate::custom_reth::eigen::EigenRpcExtApiServer;
 use anyhow::{anyhow, Result};
 
-use crate::rpc::eigen::EigenRpcExtApiServer;
+pub(crate) mod eigen;
 
 /// A custom payload attributes type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -367,7 +368,7 @@ pub async fn launch_custom_node() -> Result<()> {
         .with_events(TestCanonStateSubscriptions::default());
     let config = TransportRpcModuleConfig::default().with_http([RethRpcModule::Eth]);
     let mut server = rpc_builder.build(config);
-    let custom_rpc = rpc::eigen::EigenRpcExt { provider };
+    let custom_rpc = EigenRpcExt { provider };
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive

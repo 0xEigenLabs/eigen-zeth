@@ -9,7 +9,6 @@ mod custom_reth;
 mod db;
 mod operator;
 mod prover;
-mod rpc;
 mod settlement;
 
 #[tokio::main]
