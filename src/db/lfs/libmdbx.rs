@@ -4,8 +4,12 @@
 
 use crate::db::lfs::libmdbx;
 use crate::db::Database as EigenDB;
+use anyhow::{anyhow, Result};
+use config::{Config as UtilConfig, File};
 use reth_libmdbx::*;
+use serde::Deserialize;
 use std::fs;
+use std::path::Path;
 
 pub struct Db(MdbxDB);
 
@@ -20,14 +24,35 @@ pub struct MdbxDB {
     default_db: Database,
 }
 
-pub fn open_mdbx_db(path: &str, max_dbs: usize) -> std::result::Result<Box<dyn EigenDB>, ()> {
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    pub path: String,
+    pub max_dbs: usize,
+}
+
+impl Config {
+    pub fn from_conf_path(conf_path: &str) -> Result<Self> {
+        log::info!("Load the Database config from: {}", conf_path);
+
+        let config = config::Config::builder()
+            .add_source(File::from(Path::new(conf_path)))
+            .build()
+            .map_err(|e| anyhow!("Failed to build config: {:?}", e))?;
+
+        config
+            .get("mdbx_config")
+            .map_err(|e| anyhow!("Failed to parse Mdbx Config: {:?}", e))
+    }
+}
+
+pub fn open_mdbx_db(config: Config) -> std::result::Result<Box<dyn EigenDB>, ()> {
     // create the directory if it does not exist
     // TODO: catch errors
-    fs::create_dir_all(path).unwrap();
+    fs::create_dir_all(&config.path).unwrap();
 
     let env = match Environment::builder()
-        .set_max_dbs(max_dbs)
-        .open(std::path::Path::new(path))
+        .set_max_dbs(config.max_dbs)
+        .open(std::path::Path::new(&config.path))
     {
         Ok(env) => env,
         Err(e) => {
@@ -88,15 +113,24 @@ mod tests {
     fn test_open_mdbx_db() {
         let path = "tmp/test_open_mdbx_db";
         let max_dbs = 20;
-        let _ = open_mdbx_db(path, max_dbs).unwrap();
+        let config = Config {
+            path: path.to_string(),
+            max_dbs,
+        };
+
+        let _ = open_mdbx_db(config).unwrap();
         fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
-    fn test_eigen_mdbx() {
-        let path = "tmp/test_eigen_mdbx_dn";
+    fn test_mdbx() {
+        let path = "tmp/test_mdbx_db";
         let max_dbs = 20;
-        let mut db = open_mdbx_db(path, max_dbs).unwrap();
+        let config = Config {
+            path: path.to_string(),
+            max_dbs,
+        };
+        let mut db = open_mdbx_db(config).unwrap();
 
         let key = b"key";
         // let key = string::String::from("value").into_bytes();

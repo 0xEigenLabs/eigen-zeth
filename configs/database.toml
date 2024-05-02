@@ -1,0 +1,3 @@
+[mdbx_config]
+path = "/tmp/operator"
+max_dbs = 10

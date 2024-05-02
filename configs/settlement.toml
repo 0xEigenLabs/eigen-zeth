@@ -1,0 +1,11 @@
+[ethereum_settlement_config]
+provider_url = "http://localhost:8545"
+
+[ethereum_settlement_config.local_wallet]
+private_key = "0x76af8cc59ecfabf983d423e2054b07c11212cabc532062da0bd8067c59cf4a40"
+chain_id = 12345
+
+[ethereum_settlement_config.l1_contracts_addr]
+bridge = "0x732200433EE79cCBf5842F9b5aD8fda6BF569F01"
+global_exit = "0xAC97e12d0Ae20B2E0BF94e8Bd5752494577fC799"
+zkvm = "0x12bfb8B59144b96bE5E74ECbC9896667261c004A"

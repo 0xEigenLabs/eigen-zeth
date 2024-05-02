@@ -7,7 +7,7 @@
 // TODO: Fix me
 #![allow(dead_code)]
 
-use crate::env::GLOBAL_ENV;
+use crate::config::env::GLOBAL_ENV;
 use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
@@ -15,7 +15,7 @@ use crate::prover::provider::prover_service::{
     Batch, GenAggregatedProofRequest, GenBatchProofRequest, GenFinalProofRequest, ProofResultCode,
     ProverRequest,
 };
-use prost::Message;
+use anyhow::{anyhow, bail, Result};
 use std::fmt;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -41,13 +41,32 @@ pub struct ProverChannel {
     response_receiver: Receiver<ResponseType>,
 
     /// final proof
-    final_proof_sender: Sender<Vec<u8>>,
+    // final_proof_sender: Sender<Vec<u8>>,
+
+    /// used to stop the endpoint
+    stop_endpoint_tx: Sender<()>,
+    /// the address of the aggregator
+    aggregator_addr: String,
 }
 
 type BlockNumber = u64;
 type StartChunk = String;
 type EndChunk = String;
 type RecursiveProof = String;
+
+type ErrMsg = String;
+
+#[derive(Debug, Clone)]
+pub enum ExecuteResult {
+    Success(ProofResult),
+    Failed(ErrMsg),
+}
+
+#[derive(Debug, Clone)]
+pub struct ProofResult {
+    pub proof: String,
+    pub public_inputs: String,
+}
 
 /// ProveStep ...
 #[derive(Debug)]
@@ -57,7 +76,7 @@ enum ProveStep {
     Batch(BlockNumber),
     Aggregate(StartChunk, EndChunk),
     Final(RecursiveProof),
-    End,
+    End(ExecuteResult),
 }
 
 impl fmt::Display for ProveStep {
@@ -67,27 +86,34 @@ impl fmt::Display for ProveStep {
             ProveStep::Batch(no) => write!(f, "♦ Batch: {}", no),
             ProveStep::Aggregate(s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
             ProveStep::Final(r) => write!(f, "♣ Final: {:?}", r),
-            ProveStep::End => write!(f, "🌹"),
+            ProveStep::End(result) => write!(f, "🌹 End: {:?}", result),
         }
     }
 }
 
 impl ProverChannel {
-    pub fn new(addr: &str, sender: Sender<Vec<u8>>) -> Self {
+    pub fn new(addr: &str, aggregator_addr: &str) -> Self {
         let (response_sender, response_receiver) = mpsc::channel(10);
         let (request_sender, request_receiver) = mpsc::channel(10);
+        let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverChannel {
             step: ProveStep::Start,
             current_batch: None,
             parent_batch: None,
-            endpoint: Some(ProverEndpoint::new(addr, response_sender, request_receiver)),
+            endpoint: Some(ProverEndpoint::new(
+                addr,
+                response_sender,
+                request_receiver,
+                stop_rx,
+            )),
             request_sender,
             response_receiver,
-            final_proof_sender: sender,
+            stop_endpoint_tx: stop_tx,
+            aggregator_addr: aggregator_addr.to_string(),
         }
     }
 
-    pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn start(&mut self) -> Result<()> {
         // start the endpoint
         // self.endpoint.launch().await;
 
@@ -95,13 +121,36 @@ impl ProverChannel {
         // the self.endpoint will be None after this
         // TODO: handle the error, and relaunch the endpoint
         let mut endpoint = self.endpoint.take().unwrap();
+        // loop {
+        //     tokio::select! {
+        //         r = endpoint.launch() => {
+        //             match r {
+        //                 Ok(_) => {
+        //                     // stop with the signal
+        //                     return Ok(())
+        //                 }
+        //                 Err(e) => {
+        //                     // stop with the error
+        //                     // TODO: relaunch the endpoint
+        //                     log::error!("ProverEndpoint error: {:?}", e);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+
         tokio::spawn(async move {
-            match endpoint.launch().await {
-                Ok(_) => {
-                    log::info!("ProverEndpoint stopped");
-                }
-                Err(e) => {
-                    log::error!("ProverEndpoint error: {:?}", e);
+            loop {
+                match endpoint.launch().await {
+                    Ok(_) => {
+                        // stop with the signal
+                        return;
+                    }
+                    Err(e) => {
+                        // stop with the error
+                        // TODO: relaunch the endpoint
+                        log::error!("ProverEndpoint error: {:?}", e);
+                    }
                 }
             }
         });
@@ -109,24 +158,26 @@ impl ProverChannel {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn stop(&mut self) -> Result<()> {
         // stop the endpoint
-        Ok(())
+        self.stop_endpoint_tx
+            .send(())
+            .await
+            .map_err(|e| anyhow!("Failed to stop the endpoint: {:?}", e))
+            .map(|_| log::info!("ProverChannel stopped"))
     }
 
-    pub async fn execute(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn execute(&mut self, batch: BlockNumber) -> Result<ProofResult> {
         log::debug!("execute batch {batch}");
         self.set_current_batch(batch)?;
 
         // return proof for the batch
-        self.entry_step().await?;
-
+        let result = self.entry_step().await;
         self.clean_current_batch()?;
-
-        Ok(())
+        result.map_err(|e| anyhow!("execute batch:{} failed: {:?}", batch, e))
     }
 
-    async fn entry_step(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn entry_step(&mut self) -> Result<ProofResult> {
         loop {
             self.step = match &self.step {
                 ProveStep::Start => {
@@ -160,14 +211,19 @@ impl ProverChannel {
                                 .batch_proof_result
                                 .unwrap()
                                 .chunk_proofs;
-                            let start_chunk = chunks.first().unwrap().clone().proof_key;
-                            let end_chunk = chunks.last().unwrap().clone().proof_key;
+                            let start_chunk = chunks.first().unwrap().clone().proof;
+                            let end_chunk = chunks.last().unwrap().clone().proof;
                             ProveStep::Aggregate(start_chunk, end_chunk)
                         } else {
-                            ProveStep::End
+                            ProveStep::End(ExecuteResult::Failed(format!(
+                                "gen batch proof failed, err: {}",
+                                gen_batch_proof_response.error_message
+                            )))
                         }
                     } else {
-                        ProveStep::End
+                        ProveStep::End(ExecuteResult::Failed(
+                            "gen batch proof failed, err: invalid response".to_string(),
+                        ))
                     }
                 }
 
@@ -194,10 +250,15 @@ impl ProverChannel {
                             let recursive_proof = gen_aggregated_proof_response.result_string;
                             ProveStep::Final(recursive_proof)
                         } else {
-                            ProveStep::End
+                            ProveStep::End(ExecuteResult::Failed(format!(
+                                "gen aggregated proof failed, err: {}",
+                                gen_aggregated_proof_response.error_message
+                            )))
                         }
                     } else {
-                        ProveStep::End
+                        ProveStep::End(ExecuteResult::Failed(
+                            "gen aggregated proof failed, err: invalid response".to_string(),
+                        ))
                     }
                 }
 
@@ -207,7 +268,7 @@ impl ProverChannel {
                         request_type: Some(RequestType::GenFinalProof(GenFinalProofRequest {
                             recursive_proof: recursive_proof.clone(),
                             curve_name: GLOBAL_ENV.curve_type.clone(),
-                            aggregator_addr: GLOBAL_ENV.host.clone(),
+                            aggregator_addr: self.aggregator_addr.clone(),
                         })),
                     };
                     self.request_sender.send(request).await?;
@@ -219,31 +280,34 @@ impl ProverChannel {
                         if gen_final_proof_response.result_code
                             == ProofResultCode::CompletedOk as i32
                         {
-                            let mut final_proof = vec![];
-                            gen_final_proof_response
-                                .final_proof
-                                .unwrap()
-                                .encode(&mut final_proof)?;
-                            self.final_proof_sender.send(final_proof).await?;
-                            ProveStep::End
+                            // TODO: ensure the proof and public_inputs's structure
+                            ProveStep::End(ExecuteResult::Success(ProofResult {
+                                proof: gen_final_proof_response.final_proof.unwrap().proof,
+                                // TODO: public_inputs
+                                public_inputs: "TODO".to_string(),
+                            }))
                         } else {
-                            // TODO: return error
-                            log::error!(
-                                "gen final proof failed, error: {:?}",
+                            ProveStep::End(ExecuteResult::Failed(format!(
+                                "gen final proof failed: {}",
                                 gen_final_proof_response.error_message
-                            );
-                            ProveStep::End
+                            )))
                         }
                     } else {
-                        log::error!("gen final proof failed, no response");
-                        ProveStep::End
+                        ProveStep::End(ExecuteResult::Failed(
+                            "gen final proof failed, err: invalid response".to_string(),
+                        ))
                     }
                 }
 
-                ProveStep::End => {
+                ProveStep::End(execute_result) => {
+                    let result = (*execute_result).clone();
                     // reset smt state
                     self.step = ProveStep::Start;
-                    return Ok(());
+
+                    return match result {
+                        ExecuteResult::Success(r) => Ok(r),
+                        ExecuteResult::Failed(err) => bail!("{}", err),
+                    };
                 }
             };
             log::debug!("Status: {:?}, {}", self.current_batch, self.step);
@@ -251,14 +315,14 @@ impl ProverChannel {
         }
     }
 
-    fn set_current_batch(&mut self, batch: BlockNumber) -> Result<(), Box<dyn std::error::Error>> {
+    fn set_current_batch(&mut self, batch: BlockNumber) -> Result<()> {
         self.step = ProveStep::Start;
         self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = Some(batch);
         Ok(())
     }
 
-    fn clean_current_batch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn clean_current_batch(&mut self) -> Result<()> {
         self.parent_batch.clone_from(&self.current_batch);
         self.current_batch = None;
         Ok(())
@@ -278,8 +342,8 @@ pub struct ProverEndpoint {
     // request_sender: Sender<ProverRequest>,
     /// used to receive request, and send to ProverServer
     request_receiver: Option<Receiver<ProverRequest>>,
-    /// used to stop the endpoint
-    stop_endpoint_tx: Sender<()>,
+    // /// used to stop the endpoint
+    // stop_endpoint_tx: Sender<()>,
     /// listen to the stop signal, and stop the endpoint loop
     stop_endpoint_rx: Receiver<()>,
 
@@ -292,28 +356,18 @@ impl ProverEndpoint {
         addr: &str,
         response_sender: Sender<ResponseType>,
         request_receiver: Receiver<ProverRequest>,
+        stop_rx: Receiver<()>,
     ) -> Self {
-        let (stop_tx, stop_rx) = mpsc::channel(1);
         ProverEndpoint {
             addr: addr.to_string(),
             request_receiver: Some(request_receiver),
-            stop_endpoint_tx: stop_tx,
             stop_endpoint_rx: stop_rx,
             response_sender,
         }
     }
 
-    /// send request to the gRPC Stream
-    // pub async fn send_request(
-    //     &mut self,
-    //     request: ProverRequest,
-    // ) -> Result<(), Box<dyn std::error::Error>> {
-    //     self.request_sender.send(request).await?;
-    //     Ok(())
-    // }
-
     /// launch the endpoint
-    pub async fn launch(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn launch(&mut self) -> Result<()> {
         let mut client = ProverServiceClient::connect(self.addr.clone()).await?;
 
         log::info!("ProverEndpoint connected to {}", self.addr);
@@ -329,6 +383,7 @@ impl ProverEndpoint {
         loop {
             tokio::select! {
                 _ = self.stop_endpoint_rx.recv() => {
+                    log::info!("ProverEndpoint stopped");
                     return Ok(());
                 }
                 recv_msg_result = resp_stream.message() => {
@@ -357,11 +412,5 @@ impl ProverEndpoint {
                 }
             }
         }
-    }
-
-    /// stop the endpoint
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        self.stop_endpoint_tx.send(()).await?;
-        Ok(())
     }
 }
