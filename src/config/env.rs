@@ -21,8 +21,7 @@ pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
     prover_addr: std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string()),
     curve_type: std::env::var("CURVE_TYPE").unwrap_or("BN128".to_string()),
     host: std::env::var("HOST").unwrap_or("0.0.0.0:8182".to_string()),
-    zeth_db_path: std::env::var("ZETH_DB_PATH")
-        .unwrap_or("/tmp/chain".to_string()),
+    zeth_db_path: std::env::var("ZETH_DB_PATH").unwrap_or("/tmp/chain".to_string()),
     chain_id: std::env::var("CHAIN_ID")
         .unwrap_or("12345".to_string())
         .parse::<u64>()
