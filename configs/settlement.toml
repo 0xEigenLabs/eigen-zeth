@@ -1,5 +1,5 @@
 [ethereum_settlement_config]
-provider_url = "http://localhost:8546"
+provider_url = "http://localhost:8545"
 
 [ethereum_settlement_config.local_wallet]
 private_key = "0x76af8cc59ecfabf983d423e2054b07c11212cabc532062da0bd8067c59cf4a40"
