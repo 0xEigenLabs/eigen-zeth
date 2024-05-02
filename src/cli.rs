@@ -1,6 +1,7 @@
 use crate::commands::{chain_info::ChainInfoCmd, config::ConfigCmd, run::RunCmd};
 use anyhow::{bail, Result};
 
+/// Cli is the root command for the CLI.
 #[derive(clap::Parser, Debug, Clone)]
 #[command(version, author, about)]
 pub struct Cli {

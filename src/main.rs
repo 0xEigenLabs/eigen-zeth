@@ -14,7 +14,5 @@ mod settlement;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    std::env::set_var("RUST_LOG", "debug");
-    env_logger::init();
     cli::Cli::parse().run().await
 }

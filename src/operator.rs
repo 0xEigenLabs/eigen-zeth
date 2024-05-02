@@ -10,7 +10,7 @@ use anyhow::{anyhow, Result};
 use ethers_core::types::{Bytes, H160, U256};
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
-use tokio::sync::mpsc::{self, Receiver};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::time::{interval, Duration};
 
 use crate::config::env::GLOBAL_ENV;
@@ -20,25 +20,28 @@ use crate::settlement::ethereum::{EthereumSettlement, EthereumSettlementConfig};
 pub(crate) struct Operator {
     db: Box<dyn Database>,
     prover: ProverChannel,
-    rx_proof: Receiver<Vec<u8>>,
     settler: Box<dyn Settlement>,
+    proof_sender: Sender<Vec<u8>>,
+    proof_receiver: Receiver<Vec<u8>>,
 }
 
 impl Operator {
     pub fn new(
-        db_path: &str,
         _l1addr: &str,
         prover_addr: &str,
         settlement_spec: NetworkSpec,
+        db_config: lfs::DBConfig,
+        aggregator_addr: &str,
     ) -> Result<Self> {
-        let (sx, rx_proof) = mpsc::channel(10);
-        let prover = ProverChannel::new(prover_addr, sx);
-        let db = lfs::open_db(lfs::DBConfig::Mdbx {
-            path: db_path.to_string(),
-            max_dbs: 10,
-        })
-        .map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
+        let (proof_sender, proof_receiver) = mpsc::channel(10);
 
+        // initialize the prover
+        let prover = ProverChannel::new(prover_addr, aggregator_addr);
+
+        // initialize the database
+        let db = lfs::open_db(db_config).map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
+
+        // initialize the settlement layer
         let settler = init_settlement(settlement_spec)
             .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
 
@@ -46,7 +49,8 @@ impl Operator {
             prover,
             db,
             settler,
-            rx_proof,
+            proof_sender,
+            proof_receiver,
         })
     }
 
@@ -72,7 +76,32 @@ impl Operator {
                         },
                         (Some(no), None) => {
                             let block_no = u64::from_be_bytes(no.try_into().unwrap());
-                            self.prover.execute(block_no).await.unwrap();
+                            let prover_task = self.prover.execute(block_no);
+                            tokio::select! {
+                                result = prover_task => {
+                                    match result {
+                                        Ok(execute_result) => {
+                                           log::info!("execute batch {} success: {:?}", block_no, execute_result);
+                                            // TODO: send proof and public inputs to the settlement layer
+                                            self.proof_sender.send(Vec::from(execute_result.proof)).await.unwrap();
+                                        }
+                                        Err(e) => {
+                                            log::error!("execute batch {} failed: {:?}", block_no, e);
+                                            // TODO: retry or skip?
+                                        }
+                                    }
+
+                                    // trigger the next task
+                                    let block_no_next = block_no + 1;
+                                    self.db.put(batch_key.clone(), block_no_next.to_be_bytes().to_vec());
+                                }
+
+                                _ = stop_channel.recv() => {
+                                    self.prover.stop().await.unwrap();
+                                    log::info!("Operator stopped");
+                                    return Ok(());
+                                }
+                            }
                         },
                         (None, Some(no)) => todo!("Invalid branch, block: {no}"),
                         (Some(next), Some(cur)) => {
@@ -81,27 +110,17 @@ impl Operator {
                         },
                     };
                 }
-                proof_data = self.rx_proof.recv() => {
+                proof_data = self.proof_receiver.recv() => {
                     log::debug!("fetch proof: {:?}", proof_data);
                     self.db.put(proof_key.clone(), proof_data.unwrap());
 
-                    // trigger the next task
-                    if let Some(current_batch) = self.db.get(&batch_key) {
-                        let block_no = u64::from_be_bytes(current_batch.try_into().unwrap());
-                        self.prover.execute(block_no).await.unwrap();
-                        let block_no_next = block_no + 1;
-                        self.db.put(batch_key.clone(), block_no_next.to_be_bytes().to_vec());
-
-                        // TODO
-                        let _ = self.settler.bridge_asset(0, H160::zero(), U256::zero(), H160::zero(), true, Bytes::default()).await;
-                    } else {
-                        log::debug!("Wait for the new task coming in");
-                    }
+                    // TODO: verify the proof
+                    let _ = self.settler.bridge_asset(0, H160::zero(), U256::zero(), H160::zero(), true, Bytes::default()).await;
                 }
                 _ = stop_channel.recv() => {
                     self.prover.stop().await.unwrap();
                 }
-            };
+            }
         }
     }
 }

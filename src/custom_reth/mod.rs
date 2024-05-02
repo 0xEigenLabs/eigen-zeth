@@ -373,7 +373,7 @@ pub async fn launch_custom_node() -> Result<()> {
     // Start the server & keep it alive
     let server_args =
         RpcServerConfig::http(Default::default()).with_http_address(GLOBAL_ENV.host.parse()?);
-    println!("Node started");
+    log::info!("Node started");
     let _handle = server_args.start(server).await?;
 
     //    futures::future::pending::<()>().await;
