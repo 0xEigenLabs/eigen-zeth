@@ -10,6 +10,13 @@ use ethers_core::types::{Address, Bytes, U256};
 
 pub(crate) mod ethereum;
 
+pub(crate) struct BatchData {
+    pub transactions: Vec<u8>,
+    pub global_exit_root: [u8; 32],
+    pub timestamp: u64,
+    pub min_forced_timestamp: u64,
+}
+
 // TODO: Fixme
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
@@ -67,6 +74,31 @@ pub trait Settlement {
     async fn update_global_exit_root(&self, new_root: [u8; 32]) -> Result<()>;
 
     async fn get_global_exit_root(&self) -> Result<[u8; 32]>;
+
+    // zkvm
+    async fn sequence_batches(&self, batches: Vec<BatchData>, l2_coinbase: Address) -> Result<()>;
+
+    async fn verify_batches(
+        &self,
+        pending_state_num: u64,
+        init_num_batch: u64,
+        final_new_batch: u64,
+        new_local_exit_root: [u8; 32],
+        new_state_root: [u8; 32],
+        _proof: String,
+        _input: String,
+    ) -> Result<()>;
+
+    async fn verify_batches_trusted_aggregator(
+        &self,
+        pending_state_num: u64,
+        init_num_batch: u64,
+        final_new_batch: u64,
+        new_local_exit_root: [u8; 32],
+        new_state_root: [u8; 32],
+        _proof: String,
+        _input: String,
+    ) -> Result<()>;
 
     // TODO: add more interfaces
 }
