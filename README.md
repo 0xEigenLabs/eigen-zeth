@@ -5,7 +5,7 @@
 ```shell
 rm -rf /tmp/layer1/chain
 reth init --datadir /tmp/layer1/chain --chain testdata/layer1/chain.json
-RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" reth node -d --chain testdata/layer1/chain.json --datadir /tmp/layer1/chain --auto-mine --http --http.port 8545 --http.api debug,eth,net,trace,web3,rpc
+RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" reth node -d --chain testdata/layer1/chain.json --datadir /tmp/layer1/chain --auto-mine --http --http.port 8545 --http.api debug,eth,net,trace,web3,rpc --port 30303 --authrpc.port 8551
 ```
 
 * Init the chain and run the RPC-only node
@@ -13,7 +13,7 @@ RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth
 ```
 rm -rf /tmp/layer2/chain
 reth init --datadir /tmp/layer2/chain --chain testdata/layer2/chain.json
-RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" reth node -d --chain testdata/layer2/chain.json --datadir /tmp/layer2/chain --auto-mine --http --http.port 8546 --http.api debug,eth,net,trace,web3,rpc
+RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" reth node -d --chain testdata/layer2/chain.json --datadir /tmp/layer2/chain --auto-mine --http --http.port 8546 --http.api debug,eth,net,trace,web3,rpc --port 30304 --authrpc.port 8552
 
 RUST_LOG="rpc::eth=trace" ZETH_DB_PATH=/tmp/chain PROVER_ADDR=http://localhost:50061 ZETH_L2_ADDR=http://localhost:8546 HOST=0.0.0.0:8182 cargo run -r -- run --database mdbx
 ```
