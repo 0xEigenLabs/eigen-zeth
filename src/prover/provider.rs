@@ -16,6 +16,7 @@ use crate::prover::provider::prover_service::{
     ProverRequest,
 };
 use anyhow::{anyhow, bail, Result};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -62,10 +63,14 @@ pub enum ExecuteResult {
     Failed(ErrMsg),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProofResult {
+    // TODO: refactor to batch
+    pub block_number: u64,
     pub proof: String,
-    pub public_inputs: String,
+    pub public_input: String,
+    pub pre_state_root: [u8; 32],
+    pub post_state_root: [u8; 32],
 }
 
 /// ProveStep ...
@@ -280,12 +285,26 @@ impl ProverChannel {
                         if gen_final_proof_response.result_code
                             == ProofResultCode::CompletedOk as i32
                         {
-                            // TODO: ensure the proof and public_inputs's structure
-                            ProveStep::End(ExecuteResult::Success(ProofResult {
-                                proof: gen_final_proof_response.final_proof.unwrap().proof,
-                                // TODO: public_inputs
-                                public_inputs: "TODO".to_string(),
-                            }))
+                            if let Some(final_proof) = gen_final_proof_response.final_proof {
+                                ProveStep::End(ExecuteResult::Success(ProofResult {
+                                    block_number: self.current_batch.unwrap(),
+                                    proof: final_proof.proof,
+                                    public_input: final_proof.public_input,
+                                    pre_state_root: <[u8; 32]>::try_from(
+                                        final_proof.pre_state_root,
+                                    )
+                                    .map_err(|_| anyhow!(""))?,
+                                    post_state_root: <[u8; 32]>::try_from(
+                                        final_proof.post_state_root,
+                                    )
+                                    .map_err(|_| anyhow!(""))?,
+                                }))
+                            } else {
+                                ProveStep::End(ExecuteResult::Failed(
+                                    "gen final proof failed, invalid response, proof is None"
+                                        .to_string(),
+                                ))
+                            }
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen final proof failed: {}",

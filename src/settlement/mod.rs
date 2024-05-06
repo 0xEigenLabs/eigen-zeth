@@ -85,8 +85,8 @@ pub trait Settlement {
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],
         new_state_root: [u8; 32],
-        _proof: String,
-        _input: String,
+        proof: String,
+        input: String,
     ) -> Result<()>;
 
     async fn verify_batches_trusted_aggregator(

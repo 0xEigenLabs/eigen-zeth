@@ -16,6 +16,7 @@ use ethers_core::types::{Address, Bytes, U256};
 use ethers_core::utils::hex;
 use ethers_providers::{Http, Provider};
 use serde::Deserialize;
+use serde_json::Value;
 use std::str::FromStr;
 
 pub struct EthereumSettlement {
@@ -286,27 +287,24 @@ impl Settlement for EthereumSettlement {
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],
         new_state_root: [u8; 32],
-        _proof: String,
-        _input: String,
+        proof: String,
+        input: String,
     ) -> Result<()> {
-        // TODO: parse the final proof to solidity Proof struct
-        let p = Proof {
-            a: G1Point {
-                x: U256::from_str("1").unwrap(),
-                y: U256::from_str("1").unwrap(),
-            },
-            b: G2Point {
-                x: [U256::from_str("1").unwrap(), U256::from_str("1").unwrap()],
-                y: [U256::from_str("1").unwrap(), U256::from_str("1").unwrap()],
-            },
-            c: G1Point {
-                x: U256::from_str("1").unwrap(),
-                y: U256::from_str("1").unwrap(),
-            },
-        };
+        let p = parse_proof(&proof).map_err(|e| {
+            anyhow!(
+                "Failed to parse proof from json string: {:?}, err: {:?}",
+                proof,
+                e
+            )
+        })?;
 
-        // TODO: parse the public input to solidity input: [U256; 1]
-        let i = [U256::from(0u64)];
+        let i = parse_public_input(&input).map_err(|e| {
+            anyhow!(
+                "Failed to parse public input from json string: {:?}, err: {:?}",
+                input,
+                e
+            )
+        })?;
 
         self.zkvm_contract_client
             .verify_batches(
@@ -362,4 +360,42 @@ impl Settlement for EthereumSettlement {
             )
             .await
     }
+}
+
+pub fn parse_proof(json_str: &str) -> Result<Proof> {
+    let err_msg = "invalid json data";
+    let v: Value = serde_json::from_str(json_str)?;
+    let pi_a_x: U256 = U256::from_dec_str(v["pi_a"]["x"].as_str().ok_or(anyhow!(err_msg))?)?;
+    let pi_a_y: U256 = U256::from_dec_str(v["pi_a"]["y"].as_str().ok_or(anyhow!(err_msg))?)?;
+
+    let pi_b_x_0: U256 = U256::from_dec_str(v["pi_b"]["x"][0].as_str().ok_or(anyhow!(err_msg))?)?;
+    let pi_b_x_1: U256 = U256::from_dec_str(v["pi_b"]["x"][1].as_str().ok_or(anyhow!(err_msg))?)?;
+    let pi_b_y_0: U256 = U256::from_dec_str(v["pi_b"]["y"][0].as_str().ok_or(anyhow!(err_msg))?)?;
+    let pi_b_y_1: U256 = U256::from_dec_str(v["pi_b"]["y"][1].as_str().ok_or(anyhow!(err_msg))?)?;
+
+    let pi_c_x: U256 = U256::from_dec_str(v["pi_c"]["x"].as_str().ok_or(anyhow!(err_msg))?)?;
+    let pi_c_y: U256 = U256::from_dec_str(v["pi_c"]["y"].as_str().ok_or(anyhow!(err_msg))?)?;
+
+    Ok(Proof {
+        a: G1Point {
+            x: pi_a_x,
+            y: pi_a_y,
+        },
+        b: G2Point {
+            x: [pi_b_x_0, pi_b_x_1],
+            y: [pi_b_y_0, pi_b_y_1],
+        },
+        c: G1Point {
+            x: pi_c_x,
+            y: pi_c_y,
+        },
+    })
+}
+
+pub fn parse_public_input(json_str: &str) -> Result<[U256; 1]> {
+    let err_msg = "invalid json data";
+    let v: Value = serde_json::from_str(json_str)?;
+    let pi: U256 = U256::from_dec_str(v["pi"].as_str().ok_or(anyhow!(err_msg))?)?;
+
+    Ok([pi])
 }
