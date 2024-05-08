@@ -1,11 +1,7 @@
-// TODO: Fix me
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
 use crate::db::lfs::libmdbx;
 use crate::db::Database as EigenDB;
 use anyhow::{anyhow, Result};
-use config::{Config as UtilConfig, File};
+use config::File;
 use reth_libmdbx::*;
 use serde::Deserialize;
 use std::fs;
@@ -84,14 +80,14 @@ impl EigenDB for Db {
         value
     }
 
-    fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
+    fn put(&self, key: Vec<u8>, value: Vec<u8>) {
         let txn = self.0.env.begin_rw_txn().unwrap();
         txn.put(self.0.default_db.dbi(), key, value, WriteFlags::empty())
             .unwrap();
         txn.commit().unwrap();
     }
 
-    fn del(&mut self, key: Vec<u8>) -> Option<Vec<u8>> {
+    fn del(&self, key: Vec<u8>) -> Option<Vec<u8>> {
         let txn = self.0.env.begin_rw_txn().unwrap();
         let value: Option<Vec<u8>> = txn.get(self.0.default_db.dbi(), &key).unwrap();
         let success = txn.del(self.0.default_db.dbi(), &key, None).unwrap();
@@ -130,7 +126,7 @@ mod tests {
             path: path.to_string(),
             max_dbs,
         };
-        let mut db = open_mdbx_db(config).unwrap();
+        let db = open_mdbx_db(config).unwrap();
 
         let key = b"key";
         // let key = string::String::from("value").into_bytes();
@@ -164,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_reth_libmdbx() {
-        use reth_libmdbx::{EnvironmentBuilder, WriteFlags};
+        use reth_libmdbx::WriteFlags;
 
         // path to the database
         let path = "tmp/test_mdbx";

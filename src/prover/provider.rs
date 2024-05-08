@@ -4,8 +4,6 @@
 //!    the proof generation request to proof network;
 //! 2) Keep polling if the task is finished.
 //! 3) If the task is finished, update the status into proof database, hence the extended RPC module will fetch this and return it to SDK.
-// TODO: Fix me
-#![allow(dead_code)]
 
 use crate::config::env::GLOBAL_ENV;
 use crate::prover::provider::prover_service::prover_request::RequestType;
@@ -119,6 +117,7 @@ impl ProverChannel {
     }
 
     pub async fn start(&mut self) -> Result<()> {
+        log::info!("Prover Endpoint started");
         // start the endpoint
         // self.endpoint.launch().await;
 
@@ -163,7 +162,7 @@ impl ProverChannel {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         // stop the endpoint
         self.stop_endpoint_tx
             .send(())
@@ -406,26 +405,36 @@ impl ProverEndpoint {
                     return Ok(());
                 }
                 recv_msg_result = resp_stream.message() => {
-                    if let Some(recv_msg) = recv_msg_result? {
-                        if let Some(msg_type) = recv_msg.response_type {
-                            match msg_type {
-                                ResponseType::GetStatus(r) => {
-                                    // TODO: Get Prover Status
-                                    log::info!("GetStatusResponse: {:?}", r);
-                                }
-                                ResponseType::GenBatchProof(r) => {
-                                    log::info!("GenBatchProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
-                                }
-                                ResponseType::GenAggregatedProof(r) => {
-                                    log::info!("GenAggregatedProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
-                                }
-                                ResponseType::GenFinalProof(r) => {
-                                    log::info!("GenFinalProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
+                    match recv_msg_result {
+                        Ok(Some(recv_msg)) => {
+                            if let Some(msg_type) = recv_msg.response_type {
+                                match msg_type {
+                                    ResponseType::GetStatus(r) => {
+                                        // TODO: Get Prover Status
+                                        log::info!("GetStatusResponse: {:?}", r);
+                                    }
+                                    ResponseType::GenBatchProof(r) => {
+                                        log::info!("GenBatchProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
+                                    }
+                                    ResponseType::GenAggregatedProof(r) => {
+                                        log::info!("GenAggregatedProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
+                                    }
+                                    ResponseType::GenFinalProof(r) => {
+                                        log::info!("GenFinalProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
+                                    }
                                 }
                             }
+                        }
+                        Ok(None) => {
+                            log::info!("Stream ended");
+                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
+                        }
+                        Err(e) => {
+                            log::error!("Error receiving message: {}", e);
+                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
                         }
                     }
                 }

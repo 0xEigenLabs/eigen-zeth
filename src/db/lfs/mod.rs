@@ -1,6 +1,3 @@
-// TODO: Fix me
-#![allow(dead_code)]
-
 pub(crate) mod libmdbx;
 mod mem;
 

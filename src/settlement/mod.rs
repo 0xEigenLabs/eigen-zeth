@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use ethers_core::types::{Address, Bytes, U256};
 
 pub(crate) mod ethereum;
+pub(crate) mod worker;
 
 pub(crate) struct BatchData {
     pub transactions: Vec<u8>,
@@ -20,7 +21,7 @@ pub(crate) struct BatchData {
 // TODO: Fixme
 #[allow(clippy::too_many_arguments)]
 #[async_trait]
-pub trait Settlement {
+pub trait Settlement: Send + Sync {
     // bridge
 
     async fn bridge_asset(
@@ -108,7 +109,7 @@ pub enum NetworkSpec {
     Optimism,
 }
 
-pub fn init_settlement(spec: NetworkSpec) -> Result<Box<dyn Settlement>> {
+pub fn init_settlement_provider(spec: NetworkSpec) -> Result<Box<dyn Settlement>> {
     match spec {
         NetworkSpec::Ethereum(config) => Ok(Box::new(ethereum::EthereumSettlement::new(config)?)),
         _ => todo!("Not supported network"),
