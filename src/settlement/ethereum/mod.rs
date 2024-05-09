@@ -306,7 +306,12 @@ impl Settlement for EthereumSettlement {
             )
         })?;
 
-        log::info!("verify batches param:\nProof: {:#?}\nInput: {:#?}\nNew state root: {:#?}", p, i, new_state_root);
+        log::info!(
+            "verify batches param:\nProof: {:#?}\nInput: {:#?}\nNew state root: {:#?}",
+            p,
+            i,
+            new_state_root
+        );
 
         self.zkvm_contract_client
             .verify_batches(
