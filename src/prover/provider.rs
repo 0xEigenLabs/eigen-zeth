@@ -55,6 +55,8 @@ type RecursiveProof = String;
 
 type ErrMsg = String;
 
+type BatchId = String;
+
 #[derive(Debug, Clone)]
 pub enum ExecuteResult {
     Success(ProofResult),
@@ -76,9 +78,9 @@ pub struct ProofResult {
 enum ProveStep {
     Start,
     // TODO: refactor to Batch
-    Batch(BlockNumber),
-    Aggregate(StartChunk, EndChunk),
-    Final(RecursiveProof),
+    Batch(BatchId, BlockNumber),
+    Aggregate(BatchId, StartChunk, EndChunk),
+    Final(BatchId, RecursiveProof),
     End(ExecuteResult),
 }
 
@@ -86,9 +88,9 @@ impl fmt::Display for ProveStep {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ProveStep::Start => write!(f, "♥ Start"),
-            ProveStep::Batch(no) => write!(f, "♦ Batch: {}", no),
-            ProveStep::Aggregate(s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
-            ProveStep::Final(r) => write!(f, "♣ Final: {:?}", r),
+            ProveStep::Batch(_batch_id, no) => write!(f, "♦ Batch: {}", no),
+            ProveStep::Aggregate(_batch_id, s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
+            ProveStep::Final(_batch_id, r) => write!(f, "♣ Final: {:?}", r),
             ProveStep::End(result) => write!(f, "🌹 End: {:?}", result),
         }
     }
@@ -186,14 +188,15 @@ impl ProverChannel {
             self.step = match &self.step {
                 ProveStep::Start => {
                     let batch = self.current_batch.unwrap();
-                    ProveStep::Batch(batch)
+                    let batch_id = uuid::Uuid::new_v4().to_string();
+                    ProveStep::Batch(batch_id, batch)
                 }
 
-                ProveStep::Batch(batch) => {
+                ProveStep::Batch(batch_id, batch) => {
                     let request = ProverRequest {
-                        id: "".to_string(),
+                        id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenBatchProof(GenBatchProofRequest {
-                            id: uuid::Uuid::new_v4().to_string(),
+                            batch_id: batch_id.clone(),
                             batch: Some(Batch {
                                 block_number: vec![*batch],
                             }),
@@ -217,7 +220,7 @@ impl ProverChannel {
                                 .chunk_proofs;
                             let start_chunk = chunks.first().unwrap().clone().proof;
                             let end_chunk = chunks.last().unwrap().clone().proof;
-                            ProveStep::Aggregate(start_chunk, end_chunk)
+                            ProveStep::Aggregate(batch_id.clone(), start_chunk, end_chunk)
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen batch proof failed, err: {}",
@@ -231,11 +234,12 @@ impl ProverChannel {
                     }
                 }
 
-                ProveStep::Aggregate(start_chunk, end_chunk) => {
+                ProveStep::Aggregate(batch_id, start_chunk, end_chunk) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenAggregatedProof(
                             GenAggregatedProofRequest {
+                                batch_id: batch_id.clone(),
                                 recursive_proof_1: start_chunk.clone(),
                                 recursive_proof_2: end_chunk.clone(),
                             },
@@ -252,7 +256,7 @@ impl ProverChannel {
                             == ProofResultCode::CompletedOk as i32
                         {
                             let recursive_proof = gen_aggregated_proof_response.result_string;
-                            ProveStep::Final(recursive_proof)
+                            ProveStep::Final(batch_id.clone(), recursive_proof)
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen aggregated proof failed, err: {}",
@@ -266,10 +270,11 @@ impl ProverChannel {
                     }
                 }
 
-                ProveStep::Final(recursive_proof) => {
+                ProveStep::Final(batch_id, recursive_proof) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenFinalProof(GenFinalProofRequest {
+                            batch_id: batch_id.clone(),
                             recursive_proof: recursive_proof.clone(),
                             curve_name: GLOBAL_ENV.curve_type.clone(),
                             aggregator_addr: self.aggregator_addr.clone(),

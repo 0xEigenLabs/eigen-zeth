@@ -139,12 +139,16 @@ impl Settler {
                         }
                     };
 
+                    log::info!("last proven block({}), last verified block({})", last_proven_block, last_verified_block);
+
                     // if the last proven block is less than or equal to the last verified block, skip
                     // waiting for the new proof of the next block
                     if last_proven_block <= last_verified_block {
+                        log::info!("no new proof to verify, try again later");
                         continue;
                     }
 
+                    log::info!("start to verify the proof of the next block({})", last_verified_block + 1);
                     // get the proof of the next block
                     let next_proof_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), last_verified_block + 1);
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()){
