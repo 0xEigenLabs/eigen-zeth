@@ -39,8 +39,12 @@ impl ZkVMContractClient {
         batches: Vec<BatchData>,
         l2_coinbase: ethers::types::Address,
     ) -> Result<()> {
+        // TODO: refactor gas_limit config
+        let gas_limit = ethers::prelude::U256::from(50000);
+
         self.contract
             .sequence_batches(batches, l2_coinbase)
+            .gas(gas_limit)
             .send()
             .await
             .map_err(|e| anyhow!("send sequence batches transaction failed, {:?}", e))?
@@ -82,6 +86,9 @@ impl ZkVMContractClient {
         proof: Proof,
         input: [U256; 1],
     ) -> Result<()> {
+        // TODO: refactor gas_limit config
+        let gas_limit = ethers::prelude::U256::from(50000);
+
         self.contract
             .verify_batches(
                 pending_state_num,
@@ -92,6 +99,7 @@ impl ZkVMContractClient {
                 proof,
                 input,
             )
+            .gas(gas_limit)
             .send()
             .await
             .map_err(|e| anyhow!("verify batches failed, {:?}", e))?
@@ -132,6 +140,9 @@ impl ZkVMContractClient {
         proof: Proof,
         input: [U256; 1],
     ) -> Result<()> {
+        // TODO: refactor gas_limit config
+        let gas_limit = ethers::prelude::U256::from(50000);
+
         self.contract
             .verify_batches_trusted_aggregator(
                 pending_state_num,
@@ -142,6 +153,7 @@ impl ZkVMContractClient {
                 proof,
                 input,
             )
+            .gas(gas_limit)
             .send()
             .await
             .map_err(|e| anyhow!("verify batches trusted aggregator failed, {:?}", e))?
