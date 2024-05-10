@@ -154,7 +154,16 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()){
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-                        match settlement_provider.verify_batches(0, 0, 0, [0; 32], proof_data.post_state_root, proof_data.proof, proof_data.public_input).await {
+                        // TODO: update the new_local_exit_root
+                        match settlement_provider.verify_batches(
+                            0,
+                            last_verified_block,
+                            last_verified_block + 1,
+                            [0; 32],
+                            proof_data.post_state_root,
+                            proof_data.proof,
+                            proof_data.public_input,
+                        ).await {
                             Ok(_) => {
                                 log::info!("verify proof success, block({})", proof_data.block_number);
                                 db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), proof_data.block_number.to_be_bytes().to_vec());

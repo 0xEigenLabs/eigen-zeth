@@ -2040,6 +2040,7 @@ dependencies = [
  "ethers-providers",
  "eyre",
  "futures",
+ "hex",
  "jsonrpsee",
  "log",
  "once_cell",

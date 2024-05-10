@@ -40,7 +40,7 @@ impl ZkVMContractClient {
         l2_coinbase: ethers::types::Address,
     ) -> Result<()> {
         // TODO: refactor gas_limit config
-        let gas_limit = ethers::prelude::U256::from(50000);
+        let gas_limit = ethers::prelude::U256::from(5000000);
 
         self.contract
             .sequence_batches(batches, l2_coinbase)
@@ -87,7 +87,7 @@ impl ZkVMContractClient {
         input: [U256; 1],
     ) -> Result<()> {
         // TODO: refactor gas_limit config
-        let gas_limit = ethers::prelude::U256::from(50000);
+        let gas_limit = ethers::prelude::U256::from(5000000);
 
         self.contract
             .verify_batches(
@@ -141,7 +141,7 @@ impl ZkVMContractClient {
         input: [U256; 1],
     ) -> Result<()> {
         // TODO: refactor gas_limit config
-        let gas_limit = ethers::prelude::U256::from(50000);
+        let gas_limit = ethers::prelude::U256::from(5000000);
 
         self.contract
             .verify_batches_trusted_aggregator(

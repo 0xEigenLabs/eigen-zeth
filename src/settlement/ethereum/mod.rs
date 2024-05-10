@@ -305,12 +305,24 @@ impl Settlement for EthereumSettlement {
                 e
             )
         })?;
+        let hex_state_root = hex::encode(new_state_root);
 
         log::info!(
-            "verify batches param:\nProof: {:#?}\nInput: {:#?}\nNew state root: {:#?}",
+            "verify batches param:\n\
+            Pending state num: {}\n\
+            Init batch num: {}\n\
+            Final batch num: {}\n\
+            New local exit root: {:?}\n\
+            New state root: 0x{}\n\
+            Proof: {:#?}\n\
+            Input: {:#?}\n",
+            pending_state_num,
+            init_num_batch,
+            final_new_batch,
+            new_local_exit_root,
+            hex_state_root,
             p,
             i,
-            new_state_root
         );
 
         self.zkvm_contract_client
