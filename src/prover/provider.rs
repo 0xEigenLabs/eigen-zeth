@@ -4,8 +4,6 @@
 //!    the proof generation request to proof network;
 //! 2) Keep polling if the task is finished.
 //! 3) If the task is finished, update the status into proof database, hence the extended RPC module will fetch this and return it to SDK.
-// TODO: Fix me
-#![allow(dead_code)]
 
 use crate::config::env::GLOBAL_ENV;
 use crate::prover::provider::prover_service::prover_request::RequestType;
@@ -16,6 +14,7 @@ use crate::prover::provider::prover_service::{
     ProverRequest,
 };
 use anyhow::{anyhow, bail, Result};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -56,16 +55,22 @@ type RecursiveProof = String;
 
 type ErrMsg = String;
 
+type BatchId = String;
+
 #[derive(Debug, Clone)]
 pub enum ExecuteResult {
     Success(ProofResult),
     Failed(ErrMsg),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProofResult {
+    // TODO: refactor to batch
+    pub block_number: u64,
     pub proof: String,
-    pub public_inputs: String,
+    pub public_input: String,
+    pub pre_state_root: [u8; 32],
+    pub post_state_root: [u8; 32],
 }
 
 /// ProveStep ...
@@ -73,9 +78,9 @@ pub struct ProofResult {
 enum ProveStep {
     Start,
     // TODO: refactor to Batch
-    Batch(BlockNumber),
-    Aggregate(StartChunk, EndChunk),
-    Final(RecursiveProof),
+    Batch(BatchId, BlockNumber),
+    Aggregate(BatchId, StartChunk, EndChunk),
+    Final(BatchId, RecursiveProof),
     End(ExecuteResult),
 }
 
@@ -83,9 +88,9 @@ impl fmt::Display for ProveStep {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ProveStep::Start => write!(f, "♥ Start"),
-            ProveStep::Batch(no) => write!(f, "♦ Batch: {}", no),
-            ProveStep::Aggregate(s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
-            ProveStep::Final(r) => write!(f, "♣ Final: {:?}", r),
+            ProveStep::Batch(_batch_id, no) => write!(f, "♦ Batch: {}", no),
+            ProveStep::Aggregate(_batch_id, s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
+            ProveStep::Final(_batch_id, r) => write!(f, "♣ Final: {:?}", r),
             ProveStep::End(result) => write!(f, "🌹 End: {:?}", result),
         }
     }
@@ -114,6 +119,7 @@ impl ProverChannel {
     }
 
     pub async fn start(&mut self) -> Result<()> {
+        log::info!("Prover Endpoint started");
         // start the endpoint
         // self.endpoint.launch().await;
 
@@ -158,7 +164,7 @@ impl ProverChannel {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         // stop the endpoint
         self.stop_endpoint_tx
             .send(())
@@ -182,14 +188,15 @@ impl ProverChannel {
             self.step = match &self.step {
                 ProveStep::Start => {
                     let batch = self.current_batch.unwrap();
-                    ProveStep::Batch(batch)
+                    let batch_id = uuid::Uuid::new_v4().to_string();
+                    ProveStep::Batch(batch_id, batch)
                 }
 
-                ProveStep::Batch(batch) => {
+                ProveStep::Batch(batch_id, batch) => {
                     let request = ProverRequest {
-                        id: "".to_string(),
+                        id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenBatchProof(GenBatchProofRequest {
-                            id: uuid::Uuid::new_v4().to_string(),
+                            batch_id: batch_id.clone(),
                             batch: Some(Batch {
                                 block_number: vec![*batch],
                             }),
@@ -213,7 +220,7 @@ impl ProverChannel {
                                 .chunk_proofs;
                             let start_chunk = chunks.first().unwrap().clone().proof;
                             let end_chunk = chunks.last().unwrap().clone().proof;
-                            ProveStep::Aggregate(start_chunk, end_chunk)
+                            ProveStep::Aggregate(batch_id.clone(), start_chunk, end_chunk)
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen batch proof failed, err: {}",
@@ -227,11 +234,12 @@ impl ProverChannel {
                     }
                 }
 
-                ProveStep::Aggregate(start_chunk, end_chunk) => {
+                ProveStep::Aggregate(batch_id, start_chunk, end_chunk) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenAggregatedProof(
                             GenAggregatedProofRequest {
+                                batch_id: batch_id.clone(),
                                 recursive_proof_1: start_chunk.clone(),
                                 recursive_proof_2: end_chunk.clone(),
                             },
@@ -248,7 +256,7 @@ impl ProverChannel {
                             == ProofResultCode::CompletedOk as i32
                         {
                             let recursive_proof = gen_aggregated_proof_response.result_string;
-                            ProveStep::Final(recursive_proof)
+                            ProveStep::Final(batch_id.clone(), recursive_proof)
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen aggregated proof failed, err: {}",
@@ -262,10 +270,11 @@ impl ProverChannel {
                     }
                 }
 
-                ProveStep::Final(recursive_proof) => {
+                ProveStep::Final(batch_id, recursive_proof) => {
                     let request = ProverRequest {
                         id: uuid::Uuid::new_v4().to_string(),
                         request_type: Some(RequestType::GenFinalProof(GenFinalProofRequest {
+                            batch_id: batch_id.clone(),
                             recursive_proof: recursive_proof.clone(),
                             curve_name: GLOBAL_ENV.curve_type.clone(),
                             aggregator_addr: self.aggregator_addr.clone(),
@@ -280,12 +289,26 @@ impl ProverChannel {
                         if gen_final_proof_response.result_code
                             == ProofResultCode::CompletedOk as i32
                         {
-                            // TODO: ensure the proof and public_inputs's structure
-                            ProveStep::End(ExecuteResult::Success(ProofResult {
-                                proof: gen_final_proof_response.final_proof.unwrap().proof,
-                                // TODO: public_inputs
-                                public_inputs: "TODO".to_string(),
-                            }))
+                            if let Some(final_proof) = gen_final_proof_response.final_proof {
+                                ProveStep::End(ExecuteResult::Success(ProofResult {
+                                    block_number: self.current_batch.unwrap(),
+                                    proof: final_proof.proof,
+                                    public_input: final_proof.public_input,
+                                    pre_state_root: <[u8; 32]>::try_from(
+                                        final_proof.pre_state_root,
+                                    )
+                                    .map_err(|_| anyhow!(""))?,
+                                    post_state_root: <[u8; 32]>::try_from(
+                                        final_proof.post_state_root,
+                                    )
+                                    .map_err(|_| anyhow!(""))?,
+                                }))
+                            } else {
+                                ProveStep::End(ExecuteResult::Failed(
+                                    "gen final proof failed, invalid response, proof is None"
+                                        .to_string(),
+                                ))
+                            }
                         } else {
                             ProveStep::End(ExecuteResult::Failed(format!(
                                 "gen final proof failed: {}",
@@ -387,26 +410,36 @@ impl ProverEndpoint {
                     return Ok(());
                 }
                 recv_msg_result = resp_stream.message() => {
-                    if let Some(recv_msg) = recv_msg_result? {
-                        if let Some(msg_type) = recv_msg.response_type {
-                            match msg_type {
-                                ResponseType::GetStatus(r) => {
-                                    // TODO: Get Prover Status
-                                    log::info!("GetStatusResponse: {:?}", r);
-                                }
-                                ResponseType::GenBatchProof(r) => {
-                                    log::info!("GenBatchProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
-                                }
-                                ResponseType::GenAggregatedProof(r) => {
-                                    log::info!("GenAggregatedProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
-                                }
-                                ResponseType::GenFinalProof(r) => {
-                                    log::info!("GenFinalProofResponse: {:?}", r);
-                                    self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
+                    match recv_msg_result {
+                        Ok(Some(recv_msg)) => {
+                            if let Some(msg_type) = recv_msg.response_type {
+                                match msg_type {
+                                    ResponseType::GetStatus(r) => {
+                                        // TODO: Get Prover Status
+                                        log::info!("GetStatusResponse: {:?}", r);
+                                    }
+                                    ResponseType::GenBatchProof(r) => {
+                                        log::info!("GenBatchProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenBatchProof(r)).await?;
+                                    }
+                                    ResponseType::GenAggregatedProof(r) => {
+                                        log::info!("GenAggregatedProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenAggregatedProof(r)).await?;
+                                    }
+                                    ResponseType::GenFinalProof(r) => {
+                                        log::info!("GenFinalProofResponse: {:?}", r);
+                                        self.response_sender.send(ResponseType::GenFinalProof(r)).await?;
+                                    }
                                 }
                             }
+                        }
+                        Ok(None) => {
+                            log::info!("Stream ended");
+                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
+                        }
+                        Err(e) => {
+                            log::error!("Error receiving message: {}", e);
+                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
                         }
                     }
                 }

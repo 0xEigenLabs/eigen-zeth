@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::config::env::GLOBAL_ENV;
 use crate::custom_reth;
 use crate::db::lfs;
-use crate::operator;
+use crate::operator::Operator;
 use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::NetworkSpec;
 
@@ -182,14 +182,14 @@ impl RunCmd {
         );
 
         // Initialize the operator
-        let mut op = operator::Operator::new(
-            &GLOBAL_ENV.l1addr,
-            &GLOBAL_ENV.prover_addr,
-            settlement_spec,
-            db_config,
-            aggregator_addr,
-        )
-        .unwrap();
+        // let mut op = operator::Operator::new(
+        //     &GLOBAL_ENV.l2addr,
+        //     &GLOBAL_ENV.prover_addr,
+        //     settlement_spec,
+        //     db_config,
+        //     aggregator_addr,
+        // )
+        // .unwrap();
 
         let mut sigterm = signal(SignalKind::terminate()).unwrap();
         let mut sigint = signal(SignalKind::interrupt()).unwrap();
@@ -220,6 +220,14 @@ impl RunCmd {
         custom_reth::launch_custom_node().await?;
 
         // Run the operator
-        op.run(stop_rx).await
+        Operator::run(
+            &GLOBAL_ENV.l2addr,
+            &GLOBAL_ENV.prover_addr,
+            settlement_spec,
+            db_config,
+            aggregator_addr,
+            stop_rx,
+        )
+        .await
     }
 }

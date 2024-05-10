@@ -1,5 +1,5 @@
 //! Rust contract client for https://github.com/0xEigenLabs/eigen-bridge-contracts/blob/feature/bridge_contract/src/EigenBridge.sol
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::LocalWallet;
 use ethers_contract::abigen;
@@ -40,8 +40,7 @@ impl BridgeContractClient {
         force_update_global_exit_root: bool,
         calldata: Bytes,
     ) -> Result<()> {
-        if let Ok(result) = self
-            .contract
+        self.contract
             .bridge_asset(
                 destination_network,
                 destination_address,
@@ -51,12 +50,20 @@ impl BridgeContractClient {
                 calldata,
             )
             .send()
-            .await?
-            .inspect(|s| log::info!("pending bridge asset transaction: {:?}", **s))
             .await
-        {
-            log::debug!("bridge asset {result:?}");
-        }
+            .map_err(|e| anyhow!("send bridge asset transaction failed, {:?}", e))?
+            .inspect(|pending_tx| {
+                log::info!("pending bridge asset transaction: {:?}", **pending_tx)
+            })
+            .await
+            .map_err(|e| anyhow!("execute bridge asset transaction failed, {:?}", e))?
+            .inspect(|tx_receipt| {
+                log::debug!(
+                    "The bridge asset transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
+                    tx_receipt
+                )
+            });
+
         Ok(())
     }
 
@@ -67,8 +74,7 @@ impl BridgeContractClient {
         force_update_global_exit_root: bool,
         calldata: Bytes,
     ) -> Result<()> {
-        if let Ok(result) = self
-            .contract
+        self.contract
             .bridge_message(
                 destination_network,
                 destination_address,
@@ -77,9 +83,19 @@ impl BridgeContractClient {
             )
             .send()
             .await
-        {
-            log::debug!("bridge message {result:?}");
-        }
+            .map_err(|e| anyhow!("send bridge message transaction failed, {:?}", e))?
+            .inspect(|pending_tx| {
+                log::info!("pending bridge message transaction: {:?}", **pending_tx)
+            })
+            .await
+            .map_err(|e| anyhow!("execute bridge message transaction failed, {:?}", e))?
+            .inspect(|tx_receipt| {
+                log::debug!(
+                    "The bridge message transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
+                    tx_receipt
+                )
+            });
+
         Ok(())
     }
 
@@ -98,8 +114,7 @@ impl BridgeContractClient {
         amount: U256,
         metadata: Bytes,
     ) -> Result<()> {
-        if let Ok(result) = self
-            .contract
+        self.contract
             .claim_asset(
                 smt_proof,
                 index,
@@ -114,9 +129,14 @@ impl BridgeContractClient {
             )
             .send()
             .await
-        {
-            log::debug!("claim asset {result:?}");
-        }
+            .map_err(|e| anyhow!("claim asset failed, {:?}", e))?
+            .inspect(|pending_tx| log::info!("pending claim asset transaction: {:?}", **pending_tx))
+            .await
+            .map_err(|e| anyhow!("execute claim asset transaction failed, {:?}", e))?
+            .inspect(|tx_receipt| {
+                log::debug!("The claim asset transaction was successfully confirmed on the ethereum, tx receipt: {:#?}", tx_receipt)
+            });
+
         Ok(())
     }
 
@@ -135,8 +155,7 @@ impl BridgeContractClient {
         amount: U256,
         metadata: Bytes,
     ) -> Result<()> {
-        if let Ok(result) = self
-            .contract
+        self.contract
             .claim_message(
                 smt_proof,
                 index,
@@ -151,9 +170,19 @@ impl BridgeContractClient {
             )
             .send()
             .await
-        {
-            log::debug!("claim message {result:?}");
-        }
+            .map_err(|e| anyhow!("claim message failed, {:?}", e))?
+            .inspect(|pending_tx| {
+                log::info!("pending claim message transaction: {:?}", **pending_tx)
+            })
+            .await
+            .map_err(|e| anyhow!("execute claim message transaction failed, {:?}", e))?
+            .inspect(|tx_receipt| {
+                log::debug!(
+                    "The claim message transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
+                    tx_receipt
+                )
+            });
+
         Ok(())
     }
 }
