@@ -196,6 +196,7 @@ impl RunCmd {
 
         // initialize the signal channel
         let (stop_tx, stop_rx) = mpsc::channel::<()>(1);
+        let (reth_stop_tx, reth_stop_rx) = mpsc::channel::<()>(1);
 
         // Handle the SIGTERM and SIGINT signals
         tokio::spawn(async move {
@@ -214,20 +215,25 @@ impl RunCmd {
                 };
             }
             stop_tx.send(()).await.unwrap();
+            reth_stop_tx.send(()).await.unwrap();
         });
 
         // Launch the custom reth service
-        custom_reth::launch_custom_node().await?;
 
-        // Run the operator
-        Operator::run(
-            &GLOBAL_ENV.l2addr,
-            &GLOBAL_ENV.prover_addr,
-            settlement_spec,
-            db_config,
-            aggregator_addr,
-            stop_rx,
-        )
-        .await
+        let a = aggregator_addr.clone();
+        tokio::spawn(async move {
+            // Run the operator
+            Operator::run(
+                &GLOBAL_ENV.l2addr,
+                &GLOBAL_ENV.prover_addr,
+                settlement_spec.clone(),
+                db_config.clone(),
+                a.as_str(),
+                stop_rx,
+            )
+            .await
+        });
+
+        custom_reth::launch_custom_node(reth_stop_rx).await
     }
 }

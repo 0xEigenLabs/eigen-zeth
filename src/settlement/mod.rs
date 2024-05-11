@@ -104,6 +104,7 @@ pub trait Settlement: Send + Sync {
     // TODO: add more interfaces
 }
 
+#[derive(Clone, Debug)]
 pub enum NetworkSpec {
     Ethereum(ethereum::EthereumSettlementConfig),
     Optimism,
