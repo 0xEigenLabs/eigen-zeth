@@ -1,8 +1,9 @@
 use reth_node_builder::{
     components::{ComponentsBuilder, PayloadServiceBuilder},
     node::NodeTypes,
-    BuilderContext, FullNodeTypes, Node, PayloadBuilderConfig,
+    BuilderContext, FullNodeTypes, Node, PayloadBuilderConfig, NodeBuilder, NodeConfig,
 };
+
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
 use reth_primitives::ChainSpecBuilder;
 use reth_primitives::{Address, ChainSpec, Header, Withdrawals, B256};
@@ -18,6 +19,7 @@ use reth_node_api::{
     validate_version_specific_fields, AttributesValidationError, EngineApiMessageVersion,
     EngineTypes, PayloadAttributes, PayloadBuilderAttributes, PayloadOrAttributes,
 };
+use reth_node_core::args::RpcServerArgs;
 use reth_node_core::rpc::builder::{
     RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
 };
@@ -27,7 +29,11 @@ use reth_provider::{
     CanonStateSubscriptions, StateProviderFactory,
 };
 use reth_tasks::{TaskManager, TokioTaskExecutor};
-use reth_transaction_pool::TransactionPool;
+use reth_transaction_pool::{
+    TransactionPool, Pool,
+    PoolConfig,
+    blobstore::InMemoryBlobStore, TransactionValidationTaskExecutor,
+};
 
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPoolBuilder},
@@ -46,6 +52,7 @@ use reth_rpc_types::{
     ExecutionPayloadV1,
 };
 use reth_tracing::{RethTracer, Tracer};
+use alloy_chains::Chain;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
@@ -338,17 +345,17 @@ where
 pub async fn launch_custom_node() -> Result<()> {
     let _guard = RethTracer::new().init().map_err(|e| anyhow!(e))?;
 
-    let _tasks = TaskManager::current();
+    let tasks = TaskManager::current();
 
     // create optimism genesis with canyon at block 2
-    //let spec = ChainSpec::builder()
-    //    .chain(Chain::mainnet())
+    let spec = ChainSpec::builder()
+        .chain(Chain::mainnet())
     //    .genesis(Genesis::default())
-    //    .london_activated()
-    //    .paris_activated()
-    //    .shanghai_activated()
-    //    .build();
-    let spec = Arc::new(ChainSpecBuilder::mainnet().build());
+        .london_activated()
+        .paris_activated()
+        .shanghai_activated()
+        .build();
+    //let spec = Arc::new(ChainSpecBuilder::mainnet().build());
 
     // let db_path =;
     let db_path = std::path::Path::new(&GLOBAL_ENV.zeth_db_path);
@@ -356,33 +363,49 @@ pub async fn launch_custom_node() -> Result<()> {
         open_db_read_only(db_path.join("db").as_path(), Default::default())
             .map_err(|e| anyhow!(e))?,
     );
-    let factory = ProviderFactory::new(db.clone(), spec.clone(), db_path.join("static_files"))?;
-    let provider = BlockchainProvider::new(factory, NoopBlockchainTree::default())?;
+
+    let factory = ProviderFactory::new(db.clone(), spec.clone().into(), db_path.join("static_files"))?;
+    //let provider = BlockchainProvider::new(factory, NoopBlockchainTree::default())?;
+
+    //let blockchain_db = BlockchainProvider::new(factory, blockchain_tree.clone())?;
+    let blockchain_db = BlockchainProvider::new(factory, NoopBlockchainTree::default())?;
+    let blob_store = InMemoryBlobStore::default();
+
+    let validator = TransactionValidationTaskExecutor::eth_builder(Arc::new(spec.clone()))
+//            .kzg_settings(self.kzg_settings()?)
+            .with_additional_tasks(1)
+            .build_with_tasks(blockchain_db.clone(), tasks.executor(), blob_store.clone());
+    let transaction_pool =
+            Pool::eth_pool(validator, blob_store, PoolConfig::default());
+
     let rpc_builder = RpcModuleBuilder::default()
-        .with_provider(provider.clone())
+        .with_provider(blockchain_db.clone())
         // Rest is just noops that do nothing
-        .with_noop_pool()
+        .with_pool(transaction_pool)
         .with_noop_network()
         .with_executor(TokioTaskExecutor::default())
         .with_evm_config(EthEvmConfig::default())
         .with_events(TestCanonStateSubscriptions::default());
     let config = TransportRpcModuleConfig::default().with_http([RethRpcModule::Eth]);
     let mut server = rpc_builder.build(config);
-    let custom_rpc = EigenRpcExt { provider };
+    let custom_rpc = EigenRpcExt { provider: blockchain_db };
     server.merge_configured(custom_rpc.into_rpc())?;
 
     // Start the server & keep it alive
     let server_args =
         RpcServerConfig::http(Default::default()).with_http_address(GLOBAL_ENV.host.parse()?);
     log::info!("Node started");
-    let _handle = server_args.start(server).await?;
+    //let _handle = server_args.start(server).await?;
 
     //    futures::future::pending::<()>().await;
 
-    /*
+    // FIXME: how to attach the rpc server to node?
+    let rpc_server_args = RpcServerArgs::default().with_http();
     // create node config
     let node_config = NodeConfig::test()
-        .with_rpc(RpcServerArgs::default().with_http())
+        //.with_rpc(RpcServerArgs::default().with_http())
+        .with_rpc(rpc_server_args)
+        //.with_rpc(server)
         .with_chain(spec);
 
     let handle = NodeBuilder::new(node_config)
@@ -390,8 +413,7 @@ pub async fn launch_custom_node() -> Result<()> {
         .launch_node(MyCustomNode::default())
         .await
         .unwrap();
-    handle.node_exit_future.await
-    */
+    handle.node_exit_future.await.unwrap();
 
     Ok(())
 }
