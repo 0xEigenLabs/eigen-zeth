@@ -373,10 +373,6 @@ pub async fn launch_custom_node(
 
     let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
 
-    #[cfg(feature = "optimism")]
-    let evm_config = reth_node_optimism::OptimismEvmConfig::default();
-
-    #[cfg(not(feature = "optimism"))]
     let evm_config = EthEvmConfig::default();
 
     // Configure blockchain tree
