@@ -27,7 +27,7 @@ curl -H "Content-Type: application/json" -X POST --data '{"jsonrpc":"2.0","metho
 You can also use [cast](https://github.com/foundry-rs/foundry/releases).
 
 ```
-cast rpc eigenrpc_customMethod
+cast rpc --rpc-url http://localhost:8546 eigenrpc_customMethod
 
-cast rpc eigenrpc_getBlockByNumber 0
+cast rpc --rpc-url http://localhost:8546 eigenrpc_getBlockByNumber 0
 ```
