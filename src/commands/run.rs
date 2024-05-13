@@ -5,6 +5,7 @@ use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 
+use crate::commands::reth::RethCmd;
 use crate::config::env::GLOBAL_ENV;
 use crate::custom_reth;
 use crate::db::lfs;
@@ -13,9 +14,11 @@ use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::NetworkSpec;
 
 /// The `RunCmd` struct is a command that runs the eigen-zeth.
-#[derive(clap::Args, Debug, Clone, PartialEq, Eq)]
+#[derive(clap::Args, Debug, Clone)]
 #[command(version, author, about, long_about)]
 pub struct RunCmd {
+    #[clap(flatten)]
+    pub reth_cmd: RethCmd,
     /// The log level of the node.
     #[arg(
         long,
@@ -181,21 +184,12 @@ impl RunCmd {
             self.base_params.aggregator_addr
         );
 
-        // Initialize the operator
-        // let mut op = operator::Operator::new(
-        //     &GLOBAL_ENV.l2addr,
-        //     &GLOBAL_ENV.prover_addr,
-        //     settlement_spec,
-        //     db_config,
-        //     aggregator_addr,
-        // )
-        // .unwrap();
-
         let mut sigterm = signal(SignalKind::terminate()).unwrap();
         let mut sigint = signal(SignalKind::interrupt()).unwrap();
 
         // initialize the signal channel
         let (stop_tx, stop_rx) = mpsc::channel::<()>(1);
+        let (reth_stop_tx, reth_stop_rx) = mpsc::channel::<()>(1);
 
         // Handle the SIGTERM and SIGINT signals
         tokio::spawn(async move {
@@ -214,19 +208,38 @@ impl RunCmd {
                 };
             }
             stop_tx.send(()).await.unwrap();
+            reth_stop_tx.send(()).await.unwrap();
         });
 
-        // Launch the custom reth service
-        custom_reth::launch_custom_node().await?;
+        let (reth_started_signal_tx, reth_started_signal_rx) = mpsc::channel::<()>(1);
+        let a = aggregator_addr.clone();
+        tokio::spawn(async move {
+            // Run the operator
+            Operator::run(
+                &GLOBAL_ENV.l2addr,
+                &GLOBAL_ENV.prover_addr,
+                settlement_spec.clone(),
+                db_config.clone(),
+                a.as_str(),
+                stop_rx,
+                reth_started_signal_rx,
+            )
+            .await
+        });
 
-        // Run the operator
-        Operator::run(
-            &GLOBAL_ENV.l2addr,
-            &GLOBAL_ENV.prover_addr,
-            settlement_spec,
-            db_config,
-            aggregator_addr,
-            stop_rx,
+        let chain_spec = self.reth_cmd.chain.clone();
+        let rpc_args = self.reth_cmd.rpc.clone();
+        let dev_args = self.reth_cmd.dev;
+        let data_dir = self.reth_cmd.datadir.clone();
+
+        // Launch the custom reth
+        custom_reth::launch_custom_node(
+            reth_stop_rx,
+            reth_started_signal_tx,
+            chain_spec,
+            rpc_args,
+            data_dir,
+            dev_args,
         )
         .await
     }

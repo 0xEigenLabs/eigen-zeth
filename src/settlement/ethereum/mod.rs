@@ -25,20 +25,20 @@ pub struct EthereumSettlement {
     pub zkvm_contract_client: ZkVMContractClient,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct EthereumSettlementConfig {
     pub provider_url: String,
     pub local_wallet: LocalWalletConfig,
     pub l1_contracts_addr: EthContractsAddr,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct LocalWalletConfig {
     pub private_key: String,
     pub chain_id: u64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct EthContractsAddr {
     pub bridge: String,
     pub global_exit: String,

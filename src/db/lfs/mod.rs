@@ -3,6 +3,7 @@ mod mem;
 
 use crate::db::Database as EigenDB;
 
+#[derive(Debug, Clone)]
 pub(crate) enum DBConfig {
     /// memory kv-database
     Memory,

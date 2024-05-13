@@ -1,10 +1,10 @@
+use reth_beacon_consensus::BeaconConsensus;
 use reth_node_builder::{
     components::{ComponentsBuilder, PayloadServiceBuilder},
     node::NodeTypes,
-    BuilderContext, FullNodeTypes, Node, PayloadBuilderConfig,
+    BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
 };
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
-use reth_primitives::ChainSpecBuilder;
 use reth_primitives::{Address, ChainSpec, Header, Withdrawals, B256};
 use std::sync::Arc;
 
@@ -12,21 +12,16 @@ use reth_basic_payload_builder::{
     BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig, BuildArguments, BuildOutcome,
     PayloadBuilder, PayloadConfig,
 };
-use reth_blockchain_tree::noop::NoopBlockchainTree;
-use reth_db::open_db_read_only;
+use reth_db::init_db;
 use reth_node_api::{
     validate_version_specific_fields, AttributesValidationError, EngineApiMessageVersion,
     EngineTypes, PayloadAttributes, PayloadBuilderAttributes, PayloadOrAttributes,
 };
-use reth_node_core::rpc::builder::{
-    RethRpcModule, RpcModuleBuilder, RpcServerConfig, TransportRpcModuleConfig,
-};
-use reth_provider::test_utils::TestCanonStateSubscriptions;
 use reth_provider::{
     providers::{BlockchainProvider, ProviderFactory},
     CanonStateSubscriptions, StateProviderFactory,
 };
-use reth_tasks::{TaskManager, TokioTaskExecutor};
+use reth_tasks::TaskManager;
 use reth_transaction_pool::TransactionPool;
 
 use reth_node_ethereum::{
@@ -50,10 +45,19 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
 
-use crate::config::env::GLOBAL_ENV;
 use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
 use anyhow::{anyhow, Result};
+use jsonrpsee::tracing;
+use reth_blockchain_tree::{
+    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
+};
+use reth_db::mdbx::DatabaseArguments;
+use reth_interfaces::consensus::Consensus;
+use reth_node_core::args::{DevArgs, RpcServerArgs};
+use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
+use reth_node_core::node_config::NodeConfig;
+use reth_revm::EvmProcessorFactory;
 
 pub(crate) mod eigen;
 
@@ -334,64 +338,94 @@ where
     }
 }
 
-// TODO: Refactor this
-pub async fn launch_custom_node() -> Result<()> {
+pub async fn launch_custom_node(
+    mut stop_rx: tokio::sync::mpsc::Receiver<()>,
+    reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
+    spec: Arc<ChainSpec>,
+    rpc_args: RpcServerArgs,
+    data_dir: MaybePlatformPath<DataDirPath>,
+    dev_args: DevArgs,
+) -> Result<()> {
     let _guard = RethTracer::new().init().map_err(|e| anyhow!(e))?;
 
-    let _tasks = TaskManager::current();
+    let tasks = TaskManager::current();
 
-    // create optimism genesis with canyon at block 2
-    //let spec = ChainSpec::builder()
-    //    .chain(Chain::mainnet())
-    //    .genesis(Genesis::default())
-    //    .london_activated()
-    //    .paris_activated()
-    //    .shanghai_activated()
-    //    .build();
-    let spec = Arc::new(ChainSpecBuilder::mainnet().build());
+    let data_dir = data_dir.unwrap_or_chain_default(Default::default());
+    let db_path = data_dir.db_path();
 
-    // let db_path =;
-    let db_path = std::path::Path::new(&GLOBAL_ENV.zeth_db_path);
-    let db = Arc::new(
-        open_db_read_only(db_path.join("db").as_path(), Default::default())
-            .map_err(|e| anyhow!(e))?,
+    let db_arguments = DatabaseArguments::default();
+
+    tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
+    let database = Arc::new(
+        init_db(db_path.clone(), db_arguments)
+            .map_err(|e| anyhow!(e))?
+            .with_metrics(),
     );
-    let factory = ProviderFactory::new(db.clone(), spec.clone(), db_path.join("static_files"))?;
-    let provider = BlockchainProvider::new(factory, NoopBlockchainTree::default())?;
-    let rpc_builder = RpcModuleBuilder::default()
-        .with_provider(provider.clone())
-        // Rest is just noops that do nothing
-        .with_noop_pool()
-        .with_noop_network()
-        .with_executor(TokioTaskExecutor::default())
-        .with_evm_config(EthEvmConfig::default())
-        .with_events(TestCanonStateSubscriptions::default());
-    let config = TransportRpcModuleConfig::default().with_http([RethRpcModule::Eth]);
-    let mut server = rpc_builder.build(config);
-    let custom_rpc = EigenRpcExt { provider };
-    server.merge_configured(custom_rpc.into_rpc())?;
 
-    // Start the server & keep it alive
-    let server_args =
-        RpcServerConfig::http(Default::default()).with_http_address(GLOBAL_ENV.host.parse()?);
-    log::info!("Node started");
-    let _handle = server_args.start(server).await?;
-
-    //    futures::future::pending::<()>().await;
-
-    /*
     // create node config
     let node_config = NodeConfig::test()
-        .with_rpc(RpcServerArgs::default().with_http())
-        .with_chain(spec);
+        .with_rpc(rpc_args)
+        .with_chain(spec.clone())
+        .with_dev(dev_args);
+
+    let factory =
+        ProviderFactory::new(database.clone(), spec.clone(), data_dir.static_files_path())?;
+
+    let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
+
+    let evm_config = EthEvmConfig::default();
+
+    // Configure blockchain tree
+    let tree_externals = TreeExternals::new(
+        factory.clone(),
+        Arc::clone(&consensus),
+        EvmProcessorFactory::new(spec.clone(), evm_config),
+    );
+
+    let tree = BlockchainTree::new(tree_externals, BlockchainTreeConfig::default(), None)?;
+    let blockchain_tree = ShareableBlockchainTree::new(tree);
+
+    let provider = BlockchainProvider::new(factory, blockchain_tree.clone())?;
 
     let handle = NodeBuilder::new(node_config)
-        .testing_node(tasks.executor())
-        .launch_node(MyCustomNode::default())
+        .with_database(database)
+        .with_launch_context(tasks.executor(), data_dir)
+        .node(MyCustomNode::default())
+        .extend_rpc_modules(move |ctx| {
+            // create EigenRpcExt Instance
+            let custom_rpc = EigenRpcExt {
+                provider: provider.clone(),
+            };
+
+            // add EigenRpcExt to RPC modules
+            ctx.modules.merge_configured(custom_rpc.into_rpc())?;
+
+            log::info!("EigenRpcExt extension enabled");
+
+            Ok(())
+        })
+        .on_node_started(move |_ctx| {
+            log::info!("[OnNodeStartedHook] Node started");
+            // layer2 node started, send the signal to the L2Watcher
+            reth_started_signal_channel.try_send(()).unwrap();
+            Ok(())
+        })
+        .launch()
         .await
         .unwrap();
-    handle.node_exit_future.await
-    */
+
+    tokio::select! {
+        _ = stop_rx.recv() => {
+            log::info!("Node stopped by signal");
+        }
+        r = handle.node_exit_future => {
+            if let Err(e) = r {
+                log::error!("Node stopped with error: {:?}", e);
+            } else {
+                log::info!("Node stopped");
+            }
+        }
+    }
 
     Ok(())
 }

@@ -15,15 +15,6 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::settlement::worker::Settler;
 
-// pub(crate) struct Operator {
-//     db: Arc<Box<dyn Database>>,
-//     prover: Arc<Mutex<ProverChannel>>,
-//     settler: Box<dyn Settlement>,
-//     proof_sender: Sender<ProofResult>,
-//     proof_receiver: Receiver<ProofResult>,
-//     l2watcher: L2Watcher,
-// }
-
 pub(crate) struct Operator;
 
 impl Operator {
@@ -34,6 +25,7 @@ impl Operator {
         db_config: lfs::DBConfig,
         aggregator_addr: &str,
         mut stop_rx: Receiver<()>,
+        mut reth_started_signal_rx: Receiver<()>,
     ) -> Result<()> {
         // initialize all components of the eigen-zeth full node
         // initialize the prover
@@ -48,7 +40,15 @@ impl Operator {
             .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
         let arc_settlement_provider = Arc::new(settlement_provider);
 
+        // wait for the reth to start
+        reth_started_signal_rx
+            .recv()
+            .await
+            .ok_or(anyhow!("RETH not started"))?;
+
         // initialize the L2Watcher
+        // TODO: is There A Hook in reth That Can Replace This?
+        log::info!("Initializing reth Provider with address: {}", l2addr);
         let l2provider = Provider::<Http>::try_from(l2addr)
             .map_err(|e| anyhow!("Failed to init l2 provider: {:?}", e))?;
         let mut l2watcher = L2Watcher::new(arc_db.clone(), l2provider);
