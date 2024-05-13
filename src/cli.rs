@@ -1,3 +1,4 @@
+use crate::commands::init::InitCmd;
 use crate::commands::{chain_info::ChainInfoCmd, config::ConfigCmd, run::RunCmd};
 use anyhow::{bail, Result};
 
@@ -14,12 +15,14 @@ pub enum SubCommand {
     Run(RunCmd),
     ChainInfo(ChainInfoCmd),
     Config(ConfigCmd),
+    Init(InitCmd),
 }
 
 impl Cli {
     pub async fn run(&self) -> Result<()> {
         match &self.subcommand {
             Some(SubCommand::Run(cmd)) => cmd.run().await,
+            Some(SubCommand::Init(cmd)) => cmd.run().await,
             Some(SubCommand::ChainInfo(cmd)) => cmd.run().await,
             Some(SubCommand::Config(cmd)) => cmd.run().await,
             None => {

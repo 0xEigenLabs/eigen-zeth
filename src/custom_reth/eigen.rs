@@ -33,6 +33,7 @@ where
     /// using the provider.
     fn custom_methhod(&self) -> EthResult<Option<Block>> {
         let block = self.provider.block_by_number(0)?;
+        log::info!("custom method called, block: {:?}", block);
         // check if its confirmed on L1 and update the block's status
         Ok(block)
     }

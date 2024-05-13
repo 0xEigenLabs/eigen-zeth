@@ -21,7 +21,9 @@ reth-node-core = { git = "https://github.com/0xEigenLabs/reth", package = "reth-
 reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-api", rev = "8cffebd72" }
 reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db", rev = "8cffebd72" }
 reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = "reth-blockchain-tree", rev = "8cffebd72" }
-
+reth-beacon-consensus = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
+reth-revm = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
+reth-interfaces = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
 # Database
 reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
 
