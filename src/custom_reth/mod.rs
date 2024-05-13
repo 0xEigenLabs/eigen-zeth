@@ -414,9 +414,18 @@ pub async fn launch_custom_node(
         .await
         .unwrap();
 
-    tokio::spawn(async move { handle.node_exit_future.await.map_err(|e| anyhow!(e)) });
-
-    stop_rx.recv().await;
+    tokio::select! {
+        _ = stop_rx.recv() => {
+            log::info!("Node stopped by signal");
+        }
+        r = handle.node_exit_future => {
+            if let Err(e) = r {
+                log::error!("Node stopped with error: {:?}", e);
+            } else {
+                log::info!("Node stopped");
+            }
+        }
+    }
 
     Ok(())
 }
