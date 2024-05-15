@@ -1,7 +1,6 @@
 //! This module contains the environment variables for the EigenZeth service
 
 use once_cell::sync::Lazy;
-use std::string::ToString;
 
 /// EigenZethEnv is a struct that holds the environment variables
 pub struct GlobalEnv {

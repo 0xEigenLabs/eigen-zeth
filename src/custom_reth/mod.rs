@@ -4,8 +4,13 @@ use reth_node_builder::{
     node::NodeTypes,
     BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
 };
-use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
-use reth_primitives::{Address, ChainSpec, Header, Withdrawals, B256};
+
+use reth_primitives::revm_primitives::{
+    BlockEnv, CfgEnvWithHandlerCfg, Env, PrecompileResult, TxEnv,
+};
+use reth_primitives::{
+    address, Address, Bytes, ChainSpec, Header, Transaction, Withdrawals, B256, U256,
+};
 use std::sync::Arc;
 
 use reth_basic_payload_builder::{
@@ -14,8 +19,9 @@ use reth_basic_payload_builder::{
 };
 use reth_db::init_db;
 use reth_node_api::{
-    validate_version_specific_fields, AttributesValidationError, EngineApiMessageVersion,
-    EngineTypes, PayloadAttributes, PayloadBuilderAttributes, PayloadOrAttributes,
+    validate_version_specific_fields, AttributesValidationError, ConfigureEvm, ConfigureEvmEnv,
+    EngineApiMessageVersion, EngineTypes, PayloadAttributes, PayloadBuilderAttributes,
+    PayloadOrAttributes,
 };
 use reth_provider::{
     providers::{BlockchainProvider, ProviderFactory},
@@ -57,7 +63,11 @@ use reth_interfaces::consensus::Consensus;
 use reth_node_core::args::{DevArgs, RpcServerArgs};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
-use reth_revm::EvmProcessorFactory;
+use reth_revm::{
+    handler::register::EvmHandler,
+    precompile::{Precompile, PrecompileSpecId, Precompiles},
+    Database, Evm, EvmBuilder, EvmProcessorFactory,
+};
 
 pub(crate) mod eigen;
 
@@ -184,6 +194,81 @@ impl EngineTypes for CustomEngineTypes {
     }
 }
 
+/// Custom EVM configuration
+#[derive(Debug, Clone, Copy, Default)]
+#[non_exhaustive]
+pub struct MyEvmConfig;
+
+impl MyEvmConfig {
+    /// Sets the precompiles to the EVM handler
+    ///
+    /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
+    /// [ConfigureEvm::evm_with_inspector]
+    ///
+    /// This will use the default mainnet precompiles and add additional precompiles.
+    pub fn set_precompiles<EXT, DB>(handler: &mut EvmHandler<EXT, DB>)
+    where
+        DB: Database,
+    {
+        // first we need the evm spec id, which determines the precompiles
+        let spec_id = handler.cfg.spec_id;
+
+        // install the precompiles
+        handler.pre_execution.load_precompiles = Arc::new(move || {
+            let mut precompiles = Precompiles::new(PrecompileSpecId::from_spec_id(spec_id)).clone();
+            precompiles.inner.insert(
+                address!("0000000000000000000000000000000000000999"),
+                Precompile::Env(Self::my_precompile),
+            );
+            precompiles.into()
+        });
+    }
+
+    /// A custom precompile that does nothing
+    fn my_precompile(_data: &Bytes, _gas: u64, _env: &Env) -> PrecompileResult {
+        Ok((0, Bytes::new()))
+    }
+}
+
+impl ConfigureEvmEnv for MyEvmConfig {
+    type TxMeta = ();
+
+    fn fill_tx_env<T>(tx_env: &mut TxEnv, transaction: T, sender: Address, meta: Self::TxMeta)
+    where
+        T: AsRef<Transaction>,
+    {
+        EthEvmConfig::fill_tx_env(tx_env, transaction, sender, meta)
+    }
+
+    fn fill_cfg_env(
+        cfg_env: &mut CfgEnvWithHandlerCfg,
+        chain_spec: &ChainSpec,
+        header: &Header,
+        total_difficulty: U256,
+    ) {
+        EthEvmConfig::fill_cfg_env(cfg_env, chain_spec, header, total_difficulty)
+    }
+}
+
+impl ConfigureEvm for MyEvmConfig {
+    fn evm<'a, DB: Database + 'a>(&self, db: DB) -> Evm<'a, (), DB> {
+        EvmBuilder::default()
+            .with_db(db)
+            // add additional precompiles
+            .append_handler_register(MyEvmConfig::set_precompiles)
+            .build()
+    }
+
+    fn evm_with_inspector<'a, DB: Database + 'a, I>(&self, db: DB, inspector: I) -> Evm<'a, I, DB> {
+        EvmBuilder::default()
+            .with_db(db)
+            .with_external_context(inspector)
+            // add additional precompiles
+            .append_handler_register(MyEvmConfig::set_precompiles)
+            .build()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 struct MyCustomNode;
@@ -194,7 +279,7 @@ impl NodeTypes for MyCustomNode {
     // use the custom engine types
     type Engine = CustomEngineTypes;
     // use the default ethereum EVM config
-    type Evm = EthEvmConfig;
+    type Evm = MyEvmConfig;
 
     fn evm_config(&self) -> Self::Evm {
         Self::Evm::default()
@@ -373,13 +458,13 @@ pub async fn launch_custom_node(
 
     let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
 
-    let evm_config = EthEvmConfig::default();
+    let custom_node = MyCustomNode::default();
 
     // Configure blockchain tree
     let tree_externals = TreeExternals::new(
         factory.clone(),
         Arc::clone(&consensus),
-        EvmProcessorFactory::new(spec.clone(), evm_config),
+        EvmProcessorFactory::new(spec.clone(), custom_node.evm_config()),
     );
 
     let tree = BlockchainTree::new(tree_externals, BlockchainTreeConfig::default(), None)?;
@@ -390,7 +475,7 @@ pub async fn launch_custom_node(
     let handle = NodeBuilder::new(node_config)
         .with_database(database)
         .with_launch_context(tasks.executor(), data_dir)
-        .node(MyCustomNode::default())
+        .node(custom_node)
         .extend_rpc_modules(move |ctx| {
             // create EigenRpcExt Instance
             let custom_rpc = EigenRpcExt {
