@@ -194,7 +194,9 @@ impl EngineTypes for CustomEngineTypes {
     }
 }
 
-/// Custom EVM configuration
+/// Custom EVM configuration: Read the L1 EMT root, and set it up when creating EVM.
+/// Take set_precompiles for instance, we should change [ConfigureEvm::evm] and
+/// [ConfigureEvm::evm_with_inspector]. TODO
 #[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
 pub struct MyEvmConfig;
