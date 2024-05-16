@@ -47,6 +47,7 @@ use thiserror::Error;
 
 use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
+use crate::db::Database as RollupDatabase;
 use anyhow::{anyhow, Result};
 use jsonrpsee::tracing;
 use reth_blockchain_tree::{
@@ -341,6 +342,7 @@ where
 pub async fn launch_custom_node(
     mut stop_rx: tokio::sync::mpsc::Receiver<()>,
     reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
+    rollup_db: Arc<Box<dyn RollupDatabase>>,
     spec: Arc<ChainSpec>,
     rpc_args: RpcServerArgs,
     data_dir: MaybePlatformPath<DataDirPath>,
@@ -395,6 +397,7 @@ pub async fn launch_custom_node(
             // create EigenRpcExt Instance
             let custom_rpc = EigenRpcExt {
                 provider: provider.clone(),
+                rollup_db: rollup_db.clone(),
             };
 
             // add EigenRpcExt to RPC modules

@@ -1,5 +1,4 @@
-use crate::db::{keys, prefix, Database};
-use crate::prover::provider::ProofResult;
+use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
 use crate::settlement::Settlement;
 use anyhow::Result;
@@ -57,7 +56,13 @@ impl Settler {
                     match (next_batch, current_batch){
                         (None, None) => {
                             // insert the first block
+                            // packing the first block
                             db.put(keys::KEY_NEXT_BATCH.to_vec(), 1_u64.to_be_bytes().to_vec());
+                            // update the block status to Batching
+                            let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), 1);
+                            let status = Status::Batching;
+                            let encoded_status = serde_json::to_vec(&status).unwrap();
+                            db.put(status_key.as_bytes().to_vec(), encoded_status);
                         },
                         (Some(no), None) => {
                             let block_no = u64::from_be_bytes(no.try_into().unwrap());
@@ -84,7 +89,13 @@ impl Settler {
 
                                     // update the next batch number, trigger the next prove task
                                     let block_no_next = block_no + 1;
+                                    // packing the next block
                                     db.put(keys::KEY_NEXT_BATCH.to_vec(), block_no_next.to_be_bytes().to_vec());
+                                    // update the block status to Batching
+                                    let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), block_no_next);
+                                    let status = Status::Batching;
+                                    let encoded_status = serde_json::to_vec(&status).unwrap();
+                                    db.put(status_key.as_bytes().to_vec(), encoded_status);
                                 }
 
                                 _ = stop_rx.recv() => {
@@ -167,6 +178,12 @@ impl Settler {
                             Ok(_) => {
                                 log::info!("verify proof success, block({})", proof_data.block_number);
                                 db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), proof_data.block_number.to_be_bytes().to_vec());
+
+                                // verify success, update the block status to Finalized
+                                let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), proof_data.block_number);
+                                let status = Status::Finalized;
+                                let encoded_status = serde_json::to_vec(&status).unwrap();
+                                db.put(status_key.as_bytes().to_vec(), encoded_status);
                             }
                             Err(e) => {
                                 log::error!("verify proof failed, block({}), err: {:?}",proof_data.block_number, e);
