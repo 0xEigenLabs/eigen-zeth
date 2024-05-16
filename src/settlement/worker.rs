@@ -37,6 +37,11 @@ impl Settler {
                     let next_batch = match db.get(keys::KEY_NEXT_BATCH) {
                         None => {
                             db.put(keys::KEY_NEXT_BATCH.to_vec(), 1_u64.to_be_bytes().to_vec());
+                            // update the block status to Batching
+                            let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), 1);
+                            let status = Status::Batching;
+                            let encoded_status = serde_json::to_vec(&status).unwrap();
+                            db.put(status_key.as_bytes().to_vec(), encoded_status);
                             1
                         }
                         Some(block_number_bytes) => {
