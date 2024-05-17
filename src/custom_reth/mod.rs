@@ -6,12 +6,12 @@ use reth_node_builder::{
 };
 
 use reth_primitives::revm_primitives::{
-    BlockEnv, CfgEnvWithHandlerCfg, Env, PrecompileResult, TxEnv,
+    BlockEnv, CfgEnvWithHandlerCfg, TxEnv,
 };
 use reth_primitives::{
-    address, Address, Bytes, ChainSpec, Header, Transaction, Withdrawals, B256, U256,
+    address, Address, ChainSpec, Header, Transaction, Withdrawals, B256, U256,
 };
-use revm_primitives::{CancunSpec, EVMError, Spec, StorageSlot};
+use revm_primitives::{CancunSpec, StorageSlot};
 use std::sync::Arc;
 
 use reth_basic_payload_builder::{
@@ -65,7 +65,8 @@ use reth_node_core::args::{DevArgs, RpcServerArgs};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
 use reth_revm::{
-    handler::{mainnet, register::EvmHandler}, Context, Database, Evm, EvmBuilder, EvmProcessorFactory,
+    handler::{mainnet, register::EvmHandler},
+    Context, Database, Evm, EvmBuilder, EvmProcessorFactory,
 };
 
 pub(crate) mod eigen;
@@ -217,23 +218,26 @@ impl MyEvmConfig {
         handler.pre_execution.load_accounts = Arc::new(move |ctx: &mut Context<EXT, DB>| {
             let res = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
 
-            let contract_address = address!("0000000000000000000000000000000000000999"); 
+            let contract_address = address!("0000000000000000000000000000000000000999");
             let curr_acc = match ctx.evm.load_account(contract_address) {
                 Ok(x) => x.0,
-                Err(_e) => todo!(), //FIXME: print the error 
+                Err(_e) => todo!(), //FIXME: print the error
             };
 
             let slot_id = U256::from(11111);
-            let previous_root= curr_acc.storage.get(&slot_id).unwrap();
+            let previous_root = curr_acc.storage.get(&slot_id).unwrap();
             let present_root = U256::from(1212);
 
-            curr_acc.storage.insert_unique_unchecked(slot_id, StorageSlot {
-                previous_or_original_value: previous_root.present_value(),
-                present_value: present_root
-            });
+            curr_acc.storage.insert(
+                slot_id,
+                StorageSlot {
+                    previous_or_original_value: previous_root.present_value(),
+                    present_value: present_root,
+                },
+            );
 
             res
-        });  
+        });
     }
 }
 
