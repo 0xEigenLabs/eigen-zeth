@@ -1,13 +1,15 @@
+use jsonrpsee::core::Serialize;
 use std::sync::Arc;
 // Reth block related imports
 use reth_primitives::{Block, B256};
 use reth_provider::BlockReaderIdExt;
 
 // Rpc related imports
-use crate::db::{prefix, BlockExt, Database as RollupDatabase, ProofResult, Status};
+use crate::db::{prefix, Database as RollupDatabase, ProofResult, Status};
 use jsonrpsee::proc_macros::rpc;
 use reth_interfaces::RethError;
 use reth_rpc::eth::error::{EthApiError, EthResult};
+use serde::Deserialize;
 
 /// trait interface for a custom rpc namespace: `EigenRpc`
 ///
@@ -22,7 +24,7 @@ pub trait EigenRpcExtApi {
     #[method(name = "traceTransaction")]
     fn trace_transaction(&self, hash: B256) -> EthResult<Option<()>>;
     #[method(name = "getBatchProof")]
-    fn get_batch_proof(&self, block_no: u64) -> EthResult<Option<ProofResult>>;
+    fn get_batch_proof(&self, block_no: u64) -> EthResult<Option<BatchProofInfo>>;
 }
 
 /// The type that implements `EigenRpc` rpc namespace trait
@@ -44,7 +46,6 @@ where
         Ok(block)
     }
 
-    // TODO: override the eth_get_block_by_hash to check if the block has been confirmed by L1
     fn get_block_by_number(&self, block_no: u64) -> EthResult<Option<BlockExt>> {
         let block = self.provider.block_by_number(block_no)?;
         if let Some(block) = block {
@@ -72,7 +73,7 @@ where
         Ok(Some(()))
     }
 
-    fn get_batch_proof(&self, block_no: u64) -> EthResult<Option<ProofResult>> {
+    fn get_batch_proof(&self, block_no: u64) -> EthResult<Option<BatchProofInfo>> {
         let next_proof_key = format!(
             "{}{}",
             std::str::from_utf8(prefix::PREFIX_BATCH_PROOF)
@@ -82,9 +83,35 @@ where
         if let Some(proof_bytes) = self.rollup_db.get(next_proof_key.as_bytes()) {
             let proof: ProofResult = serde_json::from_slice(&proof_bytes)
                 .map_err(|e| EthApiError::Internal(RethError::Custom(e.to_string())))?;
-            Ok(Some(proof))
+            let proof_info = BatchProofInfo {
+                block_number: proof.block_number,
+                proof: proof.proof,
+                public_input: proof.public_input,
+                pre_state_root: format!("0x{}", hex::encode(proof.pre_state_root)),
+                post_state_root: format!("0x{}", hex::encode(proof.post_state_root)),
+            };
+            Ok(Some(proof_info))
         } else {
             Ok(None)
         }
     }
+}
+
+/// A custom struct that extends the standard `reth::Block` struct with a `status` field.
+/// This additional field represents the status of the block within the rollup process.
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BlockExt {
+    pub block: Block,
+    pub status: Status,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct BatchProofInfo {
+    pub block_number: u64,
+    pub proof: String,
+    pub public_input: String,
+    // 0x + hex([u8; 32])
+    pub pre_state_root: String,
+    // 0x + hex([u8; 32])
+    pub post_state_root: String,
 }

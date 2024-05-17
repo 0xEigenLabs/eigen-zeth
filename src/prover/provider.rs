@@ -146,7 +146,10 @@ impl ProverChannel {
                     Err(e) => {
                         // stop with the error
                         // TODO: relaunch the endpoint
-                        log::error!("ProverEndpoint stopped with error, try again later, err: {:?}", e);
+                        log::error!(
+                            "ProverEndpoint stopped with error, try again later, err: {:?}",
+                            e
+                        );
                         time::sleep(Duration::from_secs(10)).await;
                     }
                 }

@@ -2,7 +2,6 @@
 #![allow(dead_code)]
 
 use jsonrpsee::core::Serialize;
-use reth_primitives::Block;
 use serde::Deserialize;
 
 mod data_availability_db;
@@ -41,14 +40,6 @@ pub(crate) mod keys {
 pub(crate) mod prefix {
     pub const PREFIX_BATCH_PROOF: &[u8] = b"BATCH_PROOF_";
     pub const PREFIX_BLOCK_STATUS: &[u8] = b"BLOCK_STATUS_";
-}
-
-/// A custom struct that extends the standard `reth::Block` struct with a `status` field.
-/// This additional field represents the status of the block within the rollup process.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-pub struct BlockExt {
-    pub block: Block,
-    pub status: Status,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
