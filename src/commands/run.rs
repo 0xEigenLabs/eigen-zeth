@@ -1,6 +1,7 @@
 use std::fmt;
+use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
@@ -211,15 +212,21 @@ impl RunCmd {
             reth_stop_tx.send(()).await.unwrap();
         });
 
+        // initialize the database
+        let rollup_db =
+            lfs::open_db(db_config).map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
+        let arc_rollup_db = Arc::new(rollup_db);
+
         let (reth_started_signal_tx, reth_started_signal_rx) = mpsc::channel::<()>(1);
         let a = aggregator_addr.clone();
+        let operator_rollup_db = arc_rollup_db.clone();
         tokio::spawn(async move {
             // Run the operator
             Operator::run(
                 &GLOBAL_ENV.l2addr,
                 &GLOBAL_ENV.prover_addr,
                 settlement_spec.clone(),
-                db_config.clone(),
+                operator_rollup_db,
                 a.as_str(),
                 stop_rx,
                 reth_started_signal_rx,
@@ -231,11 +238,13 @@ impl RunCmd {
         let rpc_args = self.reth_cmd.rpc.clone();
         let dev_args = self.reth_cmd.dev;
         let data_dir = self.reth_cmd.datadir.clone();
+        let reth_rollup_db = arc_rollup_db.clone();
 
         // Launch the custom reth
         custom_reth::launch_custom_node(
             reth_stop_rx,
             reth_started_signal_tx,
+            reth_rollup_db,
             chain_spec,
             rpc_args,
             data_dir,

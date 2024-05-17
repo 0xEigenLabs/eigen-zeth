@@ -6,6 +6,7 @@
 //! 3) If the task is finished, update the status into proof database, hence the extended RPC module will fetch this and return it to SDK.
 
 use crate::config::env::GLOBAL_ENV;
+use crate::db::ProofResult;
 use crate::prover::provider::prover_service::prover_request::RequestType;
 use crate::prover::provider::prover_service::prover_response::ResponseType;
 use crate::prover::provider::prover_service::prover_service_client::ProverServiceClient;
@@ -14,11 +15,11 @@ use crate::prover::provider::prover_service::{
     ProverRequest,
 };
 use anyhow::{anyhow, bail, Result};
-use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub mod prover_service {
@@ -61,16 +62,6 @@ type BatchId = String;
 pub enum ExecuteResult {
     Success(ProofResult),
     Failed(ErrMsg),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProofResult {
-    // TODO: refactor to batch
-    pub block_number: u64,
-    pub proof: String,
-    pub public_input: String,
-    pub pre_state_root: [u8; 32],
-    pub post_state_root: [u8; 32],
 }
 
 /// ProveStep ...
@@ -155,7 +146,11 @@ impl ProverChannel {
                     Err(e) => {
                         // stop with the error
                         // TODO: relaunch the endpoint
-                        log::error!("ProverEndpoint error: {:?}", e);
+                        log::error!(
+                            "ProverEndpoint stopped with error, try again later, err: {:?}",
+                            e
+                        );
+                        time::sleep(Duration::from_secs(10)).await;
                     }
                 }
             }

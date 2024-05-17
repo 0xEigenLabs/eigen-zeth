@@ -1,6 +1,9 @@
 // TODO: Fix me
 #![allow(dead_code)]
 
+use jsonrpsee::core::Serialize;
+use serde::Deserialize;
+
 mod data_availability_db;
 pub(crate) mod lfs;
 
@@ -36,4 +39,30 @@ pub(crate) mod keys {
 
 pub(crate) mod prefix {
     pub const PREFIX_BATCH_PROOF: &[u8] = b"BATCH_PROOF_";
+    pub const PREFIX_BLOCK_STATUS: &[u8] = b"BLOCK_STATUS_";
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Status {
+    /// the tx is pending
+    Pending,
+    /// confirmed by sequencer
+    Sequenced,
+    /// packing the block into a batch
+    Batching,
+    /// confirmed by DA
+    /// TODO: we skip the DA for now, should support it in the future
+    Submitted,
+    /// confirmed by settlement
+    Finalized,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProofResult {
+    // TODO: refactor to batch
+    pub block_number: u64,
+    pub proof: String,
+    pub public_input: String,
+    pub pre_state_root: [u8; 32],
+    pub post_state_root: [u8; 32],
 }

@@ -1,5 +1,5 @@
-use crate::db::keys;
 use crate::db::Database;
+use crate::db::{keys, prefix, Status};
 use anyhow::{anyhow, bail, Result};
 use ethers_providers::{Http, Middleware, Provider};
 use std::sync::Arc;
@@ -75,7 +75,26 @@ impl L2Watcher {
                 .map_err(|e| anyhow!("{:?}", e))
                 .map(|number| {
                     log::info!("L2Watcher fetched block({})", number);
-                    db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), number.as_u64().to_be_bytes().to_vec())
+
+                    let last_fetched_block = match db.get(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER) {
+                        None => {
+                            db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), number.as_u64().to_be_bytes().to_vec());
+                            0
+                        }
+                        Some(block_number_bytes) => {
+                            u64::from_be_bytes(block_number_bytes.try_into().unwrap())
+                        }
+                    };
+
+                    db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), number.as_u64().to_be_bytes().to_vec());
+                    for number in last_fetched_block+1..number.as_u64()+1 {
+                        // update block status to sequenced
+                        let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), number);
+                        let status = Status::Sequenced;
+                        let encoded_status = serde_json::to_vec(&status).unwrap();
+                        db.put(status_key.as_bytes().to_vec(), encoded_status);
+
+                    }
                 })
             },
             _ = stop_rx.recv() => {

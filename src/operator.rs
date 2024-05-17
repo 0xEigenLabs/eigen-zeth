@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 // use ethers_core::types::{Bytes, H160, U256};
 use ethers_providers::{Http, Provider};
 // use serde::Serialize;
-use crate::db::lfs;
+use crate::db::Database;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
@@ -22,7 +22,7 @@ impl Operator {
         l2addr: &str,
         prover_addr: &str,
         settlement_spec: NetworkSpec,
-        db_config: lfs::DBConfig,
+        rollup_db: Arc<Box<dyn Database>>,
         aggregator_addr: &str,
         mut stop_rx: Receiver<()>,
         mut reth_started_signal_rx: Receiver<()>,
@@ -30,10 +30,6 @@ impl Operator {
         // initialize all components of the eigen-zeth full node
         // initialize the prover
         let prover = ProverChannel::new(prover_addr, aggregator_addr);
-
-        // initialize the database
-        let db = lfs::open_db(db_config).map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
-        let arc_db = Arc::new(db);
 
         // initialize the settlement layer
         let settlement_provider = init_settlement_provider(settlement_spec)
@@ -51,14 +47,14 @@ impl Operator {
         log::info!("Initializing reth Provider with address: {}", l2addr);
         let l2provider = Provider::<Http>::try_from(l2addr)
             .map_err(|e| anyhow!("Failed to init l2 provider: {:?}", e))?;
-        let mut l2watcher = L2Watcher::new(arc_db.clone(), l2provider);
+        let mut l2watcher = L2Watcher::new(rollup_db.clone(), l2provider);
 
         // start all components of the eigen-zeth full node
         // start the L2Watcher
         l2watcher.start().await.unwrap();
 
         // start the verify worker
-        let arc_db_for_verify_worker = arc_db.clone();
+        let arc_db_for_verify_worker = rollup_db.clone();
         let (verify_stop_tx, verify_stop_rx) = mpsc::channel::<()>(1);
         tokio::spawn(async move {
             Settler::verify_worker(
@@ -70,7 +66,7 @@ impl Operator {
         });
 
         // start the proof worker
-        let arc_db_for_proof_worker = arc_db.clone();
+        let arc_db_for_proof_worker = rollup_db.clone();
         let (proof_stop_tx, proof_stop_rx) = mpsc::channel::<()>(1);
         tokio::spawn(async move {
             Settler::proof_worker(arc_db_for_proof_worker, prover, proof_stop_rx).await
