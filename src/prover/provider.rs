@@ -19,6 +19,7 @@ use std::fmt;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
 
 pub mod prover_service {
@@ -145,7 +146,8 @@ impl ProverChannel {
                     Err(e) => {
                         // stop with the error
                         // TODO: relaunch the endpoint
-                        log::error!("ProverEndpoint error: {:?}", e);
+                        log::error!("ProverEndpoint stopped with error, try again later, err: {:?}", e);
+                        time::sleep(Duration::from_secs(10)).await;
                     }
                 }
             }
