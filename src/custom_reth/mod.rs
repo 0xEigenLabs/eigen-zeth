@@ -11,6 +11,7 @@ use reth_primitives::revm_primitives::{
 use reth_primitives::{
     address, Address, Bytes, ChainSpec, Header, Transaction, Withdrawals, B256, U256,
 };
+use revm_primitives::{CancunSpec, EVMError, Spec, StorageSlot};
 use std::sync::Arc;
 
 use reth_basic_payload_builder::{
@@ -64,9 +65,7 @@ use reth_node_core::args::{DevArgs, RpcServerArgs};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
 use reth_revm::{
-    handler::register::EvmHandler,
-    precompile::{Precompile, PrecompileSpecId, Precompiles},
-    Database, Evm, EvmBuilder, EvmProcessorFactory,
+    handler::{mainnet, register::EvmHandler}, Context, Database, Evm, EvmBuilder, EvmProcessorFactory,
 };
 
 pub(crate) mod eigen;
@@ -208,27 +207,33 @@ impl MyEvmConfig {
     /// [ConfigureEvm::evm_with_inspector]
     ///
     /// This will use the default mainnet precompiles and add additional precompiles.
-    pub fn set_precompiles<EXT, DB>(handler: &mut EvmHandler<EXT, DB>)
+    pub fn sync_emt_root_from_l1<EXT, DB>(handler: &mut EvmHandler<EXT, DB>)
     where
         DB: Database,
     {
         // first we need the evm spec id, which determines the precompiles
-        let spec_id = handler.cfg.spec_id;
+        //let spec_id = handler.cfg.spec_id;
+        // FIXME: we assume the spec_id is CancunSpec, which is not true sometimes...
+        handler.pre_execution.load_accounts = Arc::new(move |ctx: &mut Context<EXT, DB>| {
+            let res = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
 
-        // install the precompiles
-        handler.pre_execution.load_precompiles = Arc::new(move || {
-            let mut precompiles = Precompiles::new(PrecompileSpecId::from_spec_id(spec_id)).clone();
-            precompiles.inner.insert(
-                address!("0000000000000000000000000000000000000999"),
-                Precompile::Env(Self::my_precompile),
-            );
-            precompiles.into()
-        });
-    }
+            let contract_address = address!("0000000000000000000000000000000000000999"); 
+            let curr_acc = match ctx.evm.load_account(contract_address) {
+                Ok(x) => x.0,
+                Err(_e) => todo!(), //FIXME: print the error 
+            };
 
-    /// A custom precompile that does nothing
-    fn my_precompile(_data: &Bytes, _gas: u64, _env: &Env) -> PrecompileResult {
-        Ok((0, Bytes::new()))
+            let slot_id = U256::from(11111);
+            let previous_root= curr_acc.storage.get(&slot_id).unwrap();
+            let present_root = U256::from(1212);
+
+            curr_acc.storage.insert_unique_unchecked(slot_id, StorageSlot {
+                previous_or_original_value: previous_root.present_value(),
+                present_value: present_root
+            });
+
+            res
+        });  
     }
 }
 
@@ -257,7 +262,7 @@ impl ConfigureEvm for MyEvmConfig {
         EvmBuilder::default()
             .with_db(db)
             // add additional precompiles
-            .append_handler_register(MyEvmConfig::set_precompiles)
+            .append_handler_register(MyEvmConfig::sync_emt_root_from_l1)
             .build()
     }
 
@@ -266,7 +271,7 @@ impl ConfigureEvm for MyEvmConfig {
             .with_db(db)
             .with_external_context(inspector)
             // add additional precompiles
-            .append_handler_register(MyEvmConfig::set_precompiles)
+            .append_handler_register(MyEvmConfig::sync_emt_root_from_l1)
             .build()
     }
 }
