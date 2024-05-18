@@ -5,12 +5,8 @@ use reth_node_builder::{
     BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
 };
 
-use reth_primitives::revm_primitives::{
-    BlockEnv, CfgEnvWithHandlerCfg, TxEnv,
-};
-use reth_primitives::{
-    address, Address, ChainSpec, Header, Transaction, Withdrawals, B256, U256,
-};
+use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg, TxEnv};
+use reth_primitives::{address, Address, ChainSpec, Header, Transaction, Withdrawals, B256, U256};
 use revm_primitives::{CancunSpec, StorageSlot};
 use std::sync::Arc;
 
@@ -66,7 +62,7 @@ use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
 use reth_revm::{
     handler::{mainnet, register::EvmHandler},
-    Context, Database, Evm, EvmBuilder, EvmProcessorFactory,
+    Context, Database, Evm, EvmBuilder, EvmProcessorFactory, JournalEntry,
 };
 
 pub(crate) mod eigen;
@@ -218,24 +214,67 @@ impl MyEvmConfig {
         handler.pre_execution.load_accounts = Arc::new(move |ctx: &mut Context<EXT, DB>| {
             let res = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
 
-            let contract_address = address!("0000000000000000000000000000000000000999");
-            let curr_acc = match ctx.evm.load_account(contract_address) {
-                Ok(x) => x.0,
-                Err(_e) => todo!(), //FIXME: print the error
+            let contract_address = address!("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0");
+            let slot_id = U256::from(0);
+            {
+                let _ = ctx.evm.load_account_exist(contract_address);
+
+                let storage = match ctx.evm.sload(contract_address, slot_id) {
+                    Ok(x) => x.0,
+                    Err(_e) => todo!(), // FIXME: print the error
+                };
+                println!("storage: {:?}", storage);
+
+                let sstore_res = match ctx.evm.sstore(contract_address, slot_id, U256::from(1000)) {
+                    Ok(x) => x,
+                    Err(_e) => todo!(),
+                };
+                println!("sstore res: {:?}", sstore_res);
+
+                let storage = match ctx.evm.sload(contract_address, slot_id) {
+                    Ok(x) => x.0,
+                    Err(_e) => todo!(), // FIXME: print the error
+                };
+                println!("storage after sstore: {:?}", storage);
+
+                let curr_acc = match ctx.evm.load_account(contract_address) {
+                    Ok(x) => x.0,
+                    Err(_e) => todo!(), // FIXME: print the error
+                };
+
+                println!("curr_acc: {:?}", curr_acc);
+                let default_storage_slot = StorageSlot {
+                    present_value: U256::from(0),
+                    previous_or_original_value: U256::from(0),
+                };
+
+                let previous_root = match curr_acc.storage.get(&slot_id) {
+                    Some(value) => value,
+                    None => &default_storage_slot,
+                };
+                let present_root = U256::from(1212);
+                curr_acc.storage.insert(
+                    slot_id,
+                    StorageSlot {
+                        previous_or_original_value: previous_root.present_value(),
+                        present_value: present_root,
+                    },
+                );
+                println!("curr_acc after insert: {:?}", curr_acc);
+                // ctx.evm.journaled_state.journal.last_mut().unwrap().push(
+                //     JournalEntry::StorageChange {
+                //         address: contract_address,
+                //         key: slot_id,
+                //         had_value: Some(present_root),
+                //     },
+                // );
+            }
+
+            let storage = match ctx.evm.db.storage(contract_address, slot_id) {
+                Ok(x) => x,
+                Err(_e) => todo!(), // FIXME: print the error
             };
-
-            let slot_id = U256::from(11111);
-            let previous_root = curr_acc.storage.get(&slot_id).unwrap();
-            let present_root = U256::from(1212);
-
-            curr_acc.storage.insert(
-                slot_id,
-                StorageSlot {
-                    previous_or_original_value: previous_root.present_value(),
-                    present_value: present_root,
-                },
-            );
-
+            println!("storage in db: {:?}", storage);
             res
         });
     }
@@ -271,12 +310,14 @@ impl ConfigureEvm for MyEvmConfig {
     }
 
     fn evm_with_inspector<'a, DB: Database + 'a, I>(&self, db: DB, inspector: I) -> Evm<'a, I, DB> {
-        EvmBuilder::default()
+        let mut evm = EvmBuilder::default()
             .with_db(db)
             .with_external_context(inspector)
             // add additional precompiles
             .append_handler_register(MyEvmConfig::sync_emt_root_from_l1)
-            .build()
+            .build();
+        let _ = evm.transact();
+        evm
     }
 }
 
