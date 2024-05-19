@@ -64,6 +64,7 @@ use reth_revm::{
     handler::{mainnet, register::EvmHandler},
     Context, Database, Evm, EvmBuilder, EvmProcessorFactory, JournalEntry,
 };
+use revm_primitives::SHANGHAI;
 
 pub(crate) mod eigen;
 
@@ -209,10 +210,22 @@ impl MyEvmConfig {
         DB: Database,
     {
         // first we need the evm spec id, which determines the precompiles
-        //let spec_id = handler.cfg.spec_id;
-        // FIXME: we assume the spec_id is CancunSpec, which is not true sometimes...
+        let spec_id = handler.cfg.spec_id;
         handler.pre_execution.load_accounts = Arc::new(move |ctx: &mut Context<EXT, DB>| {
-            let res = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
+            //let new_accounts = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
+
+            // set journaling state flag.
+            ctx.evm.journaled_state.set_spec_id(spec_id);
+
+            // load coinbase
+            // EIP-3651: Warm COINBASE. Starts the `COINBASE` address warm
+            if spec_id == SHANGHAI {
+                ctx.evm.inner.journaled_state.initial_account_load(
+                    ctx.evm.inner.env.block.coinbase,
+                    &[],
+                    &mut ctx.evm.inner.db,
+                )?;
+            }
 
             let contract_address = address!("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0");
             let slot_id = U256::from(0);
@@ -275,7 +288,8 @@ impl MyEvmConfig {
                 Err(_e) => todo!(), // FIXME: print the error
             };
             println!("storage in db: {:?}", storage);
-            res
+            ctx.evm.load_access_list()?;
+            Ok(())
         });
     }
 }
