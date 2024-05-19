@@ -1,6 +1,7 @@
+use crate::settlement::init_settlement_provider;
+use anyhow::{anyhow, Result};
 use std::fmt;
-
-use anyhow::Result;
+use std::sync::Arc;
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
@@ -215,6 +216,7 @@ impl RunCmd {
         let settlement_provider = init_settlement_provider(settlement_spec)
             .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
         let arc_settlement_provider = Arc::new(settlement_provider);
+        let arc_settlement_provider_clone = arc_settlement_provider.clone();
 
         let (reth_started_signal_tx, reth_started_signal_rx) = mpsc::channel::<()>(1);
         let a = aggregator_addr.clone();
@@ -223,7 +225,7 @@ impl RunCmd {
             Operator::run(
                 &GLOBAL_ENV.l2addr,
                 &GLOBAL_ENV.prover_addr,
-                arc_settlement_provider,
+                arc_settlement_provider_clone,
                 db_config.clone(),
                 a.as_str(),
                 stop_rx,

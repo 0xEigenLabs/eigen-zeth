@@ -1,6 +1,5 @@
 //! Initialize all components of the eigen-zeth full node.
 //! They will be launched in Run CMD.
-
 use crate::batch_proposer::L2Watcher;
 use crate::prover::ProverChannel;
 use crate::settlement::{init_settlement_provider, NetworkSpec};
@@ -14,6 +13,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 
 use crate::settlement::worker::Settler;
+use crate::settlement::Settlement;
 
 pub(crate) struct Operator;
 
@@ -21,7 +21,7 @@ impl Operator {
     pub async fn run(
         l2addr: &str,
         prover_addr: &str,
-        arc_settlement_provider: Arc<Settlement>,
+        arc_settlement_provider: Arc<Box<dyn Settlement>>,
         db_config: lfs::DBConfig,
         aggregator_addr: &str,
         mut stop_rx: Receiver<()>,

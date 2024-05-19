@@ -4,7 +4,6 @@ use reth_node_builder::{
     node::NodeTypes,
     BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
 };
-
 use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg, TxEnv};
 use reth_primitives::{address, Address, ChainSpec, Header, Transaction, Withdrawals, B256, U256};
 use revm_primitives::{CancunSpec, StorageSlot};
@@ -50,6 +49,7 @@ use thiserror::Error;
 
 use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
+use crate::settlement::Settlement;
 use anyhow::{anyhow, Result};
 use jsonrpsee::tracing;
 use reth_blockchain_tree::{
@@ -193,11 +193,14 @@ impl EngineTypes for CustomEngineTypes {
 /// Custom EVM configuration: Read the L1 EMT root, and set it up when creating EVM.
 /// Take set_precompiles for instance, we should change [ConfigureEvm::evm] and
 /// [ConfigureEvm::evm_with_inspector]. TODO
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone)]
 #[non_exhaustive]
-pub struct MyEvmConfig(GlobalExitRootContractClient);
+pub struct MyEvmConfig(Arc<Box<dyn Settlement>>);
 
 impl MyEvmConfig {
+    pub fn new(s: Arc<Box<dyn Settlement>>) -> Self {
+        Self(s)
+    }
     /// Sets the precompiles to the EVM handler
     ///
     /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
@@ -211,10 +214,11 @@ impl MyEvmConfig {
         // first we need the evm spec id, which determines the precompiles
         //let spec_id = handler.cfg.spec_id;
         // FIXME: we assume the spec_id is CancunSpec, which is not true sometimes...
+        let (contract_address, present_root) = MyEvmConfig::get_latest_l1_emt_root();
         handler.pre_execution.load_accounts = Arc::new(move |ctx: &mut Context<EXT, DB>| {
             let res = mainnet::load_accounts::<CancunSpec, EXT, DB>(ctx);
 
-            let contract_address = address!("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0");
+            //let contract_address = address!("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0");
             let slot_id = U256::from(0);
             {
                 let _ = ctx.evm.load_account_exist(contract_address);
@@ -252,12 +256,12 @@ impl MyEvmConfig {
                     Some(value) => value,
                     None => &default_storage_slot,
                 };
-                let present_root = U256::from(1212);
+                //let present_root = U256::from(1212);
                 curr_acc.storage.insert(
                     slot_id,
                     StorageSlot {
                         previous_or_original_value: previous_root.present_value(),
-                        present_value: present_root,
+                        present_value: U256::from_le_slice(present_root),
                     },
                 );
                 println!("curr_acc after insert: {:?}", curr_acc);
@@ -279,9 +283,13 @@ impl MyEvmConfig {
         });
     }
 
-    fn get_latest_l1_emt_root(&self) -> ([u8; 32], [u8; 32]) {
-        let contract_address = std::env::var("L1_EMT_ADDRESS").expect("Expect the L1 exit merkle tree being set");
-        let emt_root = self.eigen_global_exit_root().await;
+    fn get_latest_l1_emt_root(&self) -> (Address, [u8; 32]) {
+        let contract_address = std::env::var("L1_EMT_ADDRESS")
+            .expect("Expect the L1 exit merkle contract address being set");
+        let contract_address = Address::parse_checksummed(contract_address.as_str(), None)
+            .expect("Invalid contract address");
+        let emt_root = futures::executor::block_on(async { self.0.get_global_exit_root().await })
+            .expect("Invalid L1 exit merkle tree root");
         (contract_address, emt_root)
     }
 }
@@ -327,9 +335,15 @@ impl ConfigureEvm for MyEvmConfig {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Clone)]
 #[non_exhaustive]
-struct MyCustomNode(GlobalExitRootContractClient);
+struct MyCustomNode(Arc<Box<dyn Settlement>>);
+
+impl MyCustomNode {
+    pub fn new(s: Arc<Box<dyn Settlement>>) -> Self {
+        Self(s)
+    }
+}
 
 /// Configure the node types
 impl NodeTypes for MyCustomNode {
@@ -337,10 +351,10 @@ impl NodeTypes for MyCustomNode {
     // use the custom engine types
     type Engine = CustomEngineTypes;
     // use the default ethereum EVM config
-    type Evm = MyEvmConfig(GlobalExitRootContractClient);
+    type Evm = MyEvmConfig;
 
     fn evm_config(&self) -> Self::Evm {
-        Self::Evm(self.0)
+        Self::Evm::new(self.0.clone())
     }
 }
 
@@ -482,7 +496,7 @@ where
 }
 
 pub async fn launch_custom_node(
-    settlement_layer: Arc<Settlement>,
+    settlement_layer: Arc<Box<dyn Settlement>>,
     mut stop_rx: tokio::sync::mpsc::Receiver<()>,
     reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
     spec: Arc<ChainSpec>,
@@ -517,7 +531,7 @@ pub async fn launch_custom_node(
 
     let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
 
-    let custom_node = MyCustomNode(settlement_layer.gloabl_emt_client);
+    let custom_node = MyCustomNode::new(settlement_layer);
 
     // Configure blockchain tree
     let tree_externals = TreeExternals::new(
