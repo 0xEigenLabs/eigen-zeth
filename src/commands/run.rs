@@ -211,6 +211,11 @@ impl RunCmd {
             reth_stop_tx.send(()).await.unwrap();
         });
 
+        // initialize the settlement layer
+        let settlement_provider = init_settlement_provider(settlement_spec)
+            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
+        let arc_settlement_provider = Arc::new(settlement_provider);
+
         let (reth_started_signal_tx, reth_started_signal_rx) = mpsc::channel::<()>(1);
         let a = aggregator_addr.clone();
         tokio::spawn(async move {
@@ -218,7 +223,7 @@ impl RunCmd {
             Operator::run(
                 &GLOBAL_ENV.l2addr,
                 &GLOBAL_ENV.prover_addr,
-                settlement_spec.clone(),
+                arc_settlement_provider,
                 db_config.clone(),
                 a.as_str(),
                 stop_rx,
@@ -234,6 +239,7 @@ impl RunCmd {
 
         // Launch the custom reth
         custom_reth::launch_custom_node(
+            arc_settlement_provider,
             reth_stop_rx,
             reth_started_signal_tx,
             chain_spec,

@@ -195,7 +195,7 @@ impl EngineTypes for CustomEngineTypes {
 /// [ConfigureEvm::evm_with_inspector]. TODO
 #[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
-pub struct MyEvmConfig;
+pub struct MyEvmConfig(GlobalExitRootContractClient);
 
 impl MyEvmConfig {
     /// Sets the precompiles to the EVM handler
@@ -278,6 +278,12 @@ impl MyEvmConfig {
             res
         });
     }
+
+    fn get_latest_l1_emt_root(&self) -> ([u8; 32], [u8; 32]) {
+        let contract_address = std::env::var("L1_EMT_ADDRESS").expect("Expect the L1 exit merkle tree being set");
+        let emt_root = self.eigen_global_exit_root().await;
+        (contract_address, emt_root)
+    }
 }
 
 impl ConfigureEvmEnv for MyEvmConfig {
@@ -323,7 +329,7 @@ impl ConfigureEvm for MyEvmConfig {
 
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-struct MyCustomNode;
+struct MyCustomNode(GlobalExitRootContractClient);
 
 /// Configure the node types
 impl NodeTypes for MyCustomNode {
@@ -331,10 +337,10 @@ impl NodeTypes for MyCustomNode {
     // use the custom engine types
     type Engine = CustomEngineTypes;
     // use the default ethereum EVM config
-    type Evm = MyEvmConfig;
+    type Evm = MyEvmConfig(GlobalExitRootContractClient);
 
     fn evm_config(&self) -> Self::Evm {
-        Self::Evm::default()
+        Self::Evm(self.0)
     }
 }
 
@@ -476,6 +482,7 @@ where
 }
 
 pub async fn launch_custom_node(
+    settlement_layer: Arc<Settlement>,
     mut stop_rx: tokio::sync::mpsc::Receiver<()>,
     reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
     spec: Arc<ChainSpec>,
@@ -510,7 +517,7 @@ pub async fn launch_custom_node(
 
     let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
 
-    let custom_node = MyCustomNode::default();
+    let custom_node = MyCustomNode(settlement_layer.gloabl_emt_client);
 
     // Configure blockchain tree
     let tree_externals = TreeExternals::new(

@@ -21,7 +21,7 @@ impl Operator {
     pub async fn run(
         l2addr: &str,
         prover_addr: &str,
-        settlement_spec: NetworkSpec,
+        arc_settlement_provider: Arc<Settlement>,
         db_config: lfs::DBConfig,
         aggregator_addr: &str,
         mut stop_rx: Receiver<()>,
@@ -34,11 +34,6 @@ impl Operator {
         // initialize the database
         let db = lfs::open_db(db_config).map_err(|e| anyhow!("Failed to open db: {:?}", e))?;
         let arc_db = Arc::new(db);
-
-        // initialize the settlement layer
-        let settlement_provider = init_settlement_provider(settlement_spec)
-            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
-        let arc_settlement_provider = Arc::new(settlement_provider);
 
         // wait for the reth to start
         reth_started_signal_rx
