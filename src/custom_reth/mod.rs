@@ -226,8 +226,10 @@ impl MyEvmConfig {
                     &mut ctx.evm.inner.db,
                 )?;
             }
-
-            let contract_address = address!("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0");
+            let contract_address = std::env::var("L1_EMT_ADDRESS")
+                .unwrap_or("7a70eAF4822217A65F5cAF35e8b0d9b319Df9Ad0".to_string());
+            let contract_address = Address::parse_checksummed(contract_address.as_str(), None)
+                .expect("Invalid contract address");
             let slot_id = U256::from(0);
             {
                 let _ = ctx.evm.load_account_exist(contract_address);
