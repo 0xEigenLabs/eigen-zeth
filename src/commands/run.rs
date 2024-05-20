@@ -218,20 +218,22 @@ impl RunCmd {
         let arc_rollup_db = Arc::new(rollup_db);
 
         let (reth_started_signal_tx, reth_started_signal_rx) = mpsc::channel::<()>(1);
-        let a = aggregator_addr.clone();
         let operator_rollup_db = arc_rollup_db.clone();
+        let operator = Operator::new(
+            settlement_spec.clone(),
+            &GLOBAL_ENV.l2addr,
+            aggregator_addr.clone(),
+        );
         tokio::spawn(async move {
             // Run the operator
-            Operator::run(
-                &GLOBAL_ENV.l2addr,
-                &GLOBAL_ENV.prover_addr,
-                settlement_spec.clone(),
-                operator_rollup_db,
-                a.as_str(),
-                stop_rx,
-                reth_started_signal_rx,
-            )
-            .await
+            operator
+                .run(
+                    &GLOBAL_ENV.prover_addr,
+                    operator_rollup_db,
+                    stop_rx,
+                    reth_started_signal_rx,
+                )
+                .await
         });
 
         let chain_spec = self.reth_cmd.chain.clone();

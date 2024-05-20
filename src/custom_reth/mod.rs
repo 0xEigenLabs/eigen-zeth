@@ -375,7 +375,8 @@ pub async fn launch_custom_node(
 
     let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
 
-    let evm_config = EthEvmConfig::default();
+    let custom_node = MyCustomNode::default();
+    let evm_config = custom_node.evm_config();
 
     // Configure blockchain tree
     let tree_externals = TreeExternals::new(
@@ -392,7 +393,7 @@ pub async fn launch_custom_node(
     let handle = NodeBuilder::new(node_config)
         .with_database(database)
         .with_launch_context(tasks.executor(), data_dir)
-        .node(MyCustomNode::default())
+        .node(custom_node)
         .extend_rpc_modules(move |ctx| {
             // create EigenRpcExt Instance
             let custom_rpc = EigenRpcExt {
