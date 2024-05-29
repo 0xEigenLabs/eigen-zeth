@@ -76,6 +76,12 @@ pub trait Settlement: Send + Sync {
 
     async fn get_global_exit_root(&self) -> Result<[u8; 32]>;
 
+    // global_exit_root_l2
+
+    async fn update_global_exit_root_l2(&self, new_root: [u8; 32]) -> Result<()>;
+
+    async fn update_global_exit_root_l2_map(&self, mainnet_exit_root: [u8; 32]) -> Result<()>;
+
     // zkvm
     async fn sequence_batches(&self, batches: Vec<BatchData>, l2_coinbase: Address) -> Result<()>;
 

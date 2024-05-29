@@ -6,11 +6,12 @@ use reth_provider::BlockReaderIdExt;
 
 // Rpc related imports
 use crate::db::{prefix, Database as RollupDatabase, ProofResult, Status};
+use crate::settlement::Settlement;
+use futures::executor::block_on;
 use jsonrpsee::proc_macros::rpc;
 use reth_interfaces::RethError;
 use reth_rpc::eth::error::{EthApiError, EthResult};
 use serde::Deserialize;
-
 /// trait interface for a custom rpc namespace: `EigenRpc`
 ///
 /// This defines an additional namespace where all methods are configured as trait functions.
@@ -25,12 +26,15 @@ pub trait EigenRpcExtApi {
     fn trace_transaction(&self, hash: B256) -> EthResult<Option<()>>;
     #[method(name = "getBatchProof")]
     fn get_batch_proof(&self, block_no: u64) -> EthResult<Option<BatchProofInfo>>;
+    #[method(name = "updateGlobalExitRootMap")]
+    fn update_global_exit_root_map(&self, mainnet_exit_root: [u8; 32]) -> EthResult<Option<()>>;
 }
 
 /// The type that implements `EigenRpc` rpc namespace trait
 pub struct EigenRpcExt<Provider> {
     pub provider: Provider,
     pub rollup_db: Arc<Box<dyn RollupDatabase>>,
+    pub settlement_provider: Arc<Box<dyn Settlement>>,
 }
 
 impl<Provider> EigenRpcExtApiServer for EigenRpcExt<Provider>
@@ -94,6 +98,14 @@ where
         } else {
             Ok(None)
         }
+    }
+
+    fn update_global_exit_root_map(&self, mainnet_exit_root: [u8; 32]) -> EthResult<Option<()>> {
+        block_on(
+            self.settlement_provider
+                .update_global_exit_root_l2_map(mainnet_exit_root),
+        );
+        Ok(None)
     }
 }
 

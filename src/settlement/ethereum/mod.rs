@@ -4,6 +4,7 @@ pub(crate) mod interfaces;
 use super::BatchData as RustBatchData;
 use crate::settlement::ethereum::interfaces::bridge::BridgeContractClient;
 use crate::settlement::ethereum::interfaces::global_exit_root::GlobalExitRootContractClient;
+use crate::settlement::ethereum::interfaces::global_exit_root_l2::GlobalExitRootL2ContractClient;
 use crate::settlement::ethereum::interfaces::zkvm::{
     BatchData, G1Point, G2Point, Proof, ZkVMContractClient,
 };
@@ -22,6 +23,7 @@ use std::str::FromStr;
 pub struct EthereumSettlement {
     pub bridge_client: BridgeContractClient,
     pub global_exit_root_client: GlobalExitRootContractClient,
+    pub global_exit_root_l2_client: GlobalExitRootL2ContractClient,
     pub zkvm_contract_client: ZkVMContractClient,
 }
 
@@ -30,6 +32,7 @@ pub struct EthereumSettlementConfig {
     pub provider_url: String,
     pub local_wallet: LocalWalletConfig,
     pub l1_contracts_addr: EthContractsAddr,
+    pub l2_contracts_addr: L2ContractsAddr,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,6 +46,12 @@ pub struct EthContractsAddr {
     pub bridge: String,
     pub global_exit: String,
     pub zkvm: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct L2ContractsAddr {
+    pub bridge: String,
+    pub global_exit: String,
 }
 
 impl EthereumSettlementConfig {
@@ -101,6 +110,14 @@ impl EthereumSettlement {
                 )
             })?;
 
+        let global_exit_root_l2_address: Address =
+            config.l2_contracts_addr.global_exit.parse().map_err(|e| {
+                anyhow!(
+                    "Failed to parse global exit root address {}: {:?}",
+                    config.l2_contracts_addr.global_exit,
+                    e
+                )
+            })?;
         let zkvm_address: Address = config.l1_contracts_addr.zkvm.parse().map_err(|e| {
             anyhow!(
                 "Failed to parse zkvm address {}: {:?}",
@@ -117,6 +134,11 @@ impl EthereumSettlement {
             ),
             global_exit_root_client: GlobalExitRootContractClient::new(
                 global_exit_root_address,
+                provider.clone(),
+                local_wallet.clone(),
+            ),
+            global_exit_root_l2_client: GlobalExitRootL2ContractClient::new(
+                global_exit_root_l2_address,
                 provider.clone(),
                 local_wallet.clone(),
             ),
@@ -232,6 +254,18 @@ impl Settlement for EthereumSettlement {
     async fn get_global_exit_root(&self) -> Result<[u8; 32]> {
         self.global_exit_root_client
             .get_last_global_exit_root()
+            .await
+    }
+
+    async fn update_global_exit_root_l2(&self, new_root: [u8; 32]) -> Result<()> {
+        self.global_exit_root_l2_client
+            .update_exit_root(new_root)
+            .await
+    }
+
+    async fn update_global_exit_root_l2_map(&self, mainnet_exit_root: [u8; 32]) -> Result<()> {
+        self.global_exit_root_l2_client
+            .update_global_exit_root_map(mainnet_exit_root)
             .await
     }
 
