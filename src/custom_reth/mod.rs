@@ -49,6 +49,7 @@ use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
 use crate::db::Database as RollupDatabase;
 use crate::settlement::{init_settlement_provider, NetworkSpec};
+use crate::settlement::ethereum::EthereumSettlementConfig;
 use anyhow::{anyhow, Result};
 use jsonrpsee::tracing;
 use reth_blockchain_tree::{
@@ -390,6 +391,10 @@ pub async fn launch_custom_node(
 
     let provider = BlockchainProvider::new(factory, blockchain_tree.clone())?;
 
+    // FIXME: add contract address
+    let settlement_spec = NetworkSpec::Ethereum(EthereumSettlementConfig::from_conf_path(
+        "",
+    )?);
     let settlement_provider = init_settlement_provider(settlement_spec)
         .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))?;
     let arc_settlement_provider = Arc::new(settlement_provider);
@@ -403,7 +408,7 @@ pub async fn launch_custom_node(
             let custom_rpc = EigenRpcExt {
                 provider: provider.clone(),
                 rollup_db: rollup_db.clone(),
-                settlement_provider: settlement_provider.clone(),
+                settlement_provider: arc_settlement_provider.clone(),
             };
 
             // add EigenRpcExt to RPC modules
