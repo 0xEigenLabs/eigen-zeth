@@ -101,7 +101,7 @@ pub trait Settlement: Send + Sync {
     ) -> Result<()>;
 
     async fn get_zeth_last_rollup_exit_root(&self) -> Result<[u8; 32]>;
-    
+
     // TODO: add more interfaces
 }
 
