@@ -15,7 +15,6 @@ pub(crate) struct BatchData {
     pub transactions: Vec<u8>,
     pub global_exit_root: [u8; 32],
     pub timestamp: u64,
-    pub min_forced_timestamp: u64,
 }
 
 // TODO: Fixme
@@ -77,7 +76,7 @@ pub trait Settlement: Send + Sync {
     async fn get_global_exit_root(&self) -> Result<[u8; 32]>;
 
     // zkvm
-    async fn sequence_batches(&self, batches: Vec<BatchData>, l2_coinbase: Address) -> Result<()>;
+    async fn sequence_batches(&self, batches: Vec<BatchData>) -> Result<()>;
 
     async fn verify_batches(
         &self,
@@ -101,9 +100,12 @@ pub trait Settlement: Send + Sync {
         _input: String,
     ) -> Result<()>;
 
+    async fn get_zeth_last_rollup_exit_root(&self) -> Result<[u8; 32]>;
+    
     // TODO: add more interfaces
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum NetworkSpec {
     Ethereum(ethereum::EthereumSettlementConfig),

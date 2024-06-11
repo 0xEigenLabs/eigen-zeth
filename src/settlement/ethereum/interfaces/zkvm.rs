@@ -8,7 +8,7 @@ use ethers_contract::abigen;
 use ethers_providers::{Http, Provider};
 use std::sync::Arc;
 
-abigen!(EigenZkVM, "contracts/EigenZkvm.json");
+abigen!(EigenZkVM, "contracts/EigenZkVM.json");
 
 pub struct ZkVMContractClient {
     contract: EigenZkVM<SignerMiddleware<Provider<Http>, LocalWallet>>,
@@ -34,16 +34,12 @@ impl ZkVMContractClient {
      */
     // TODO: Fixme
     #[allow(clippy::too_many_arguments)]
-    pub async fn sequence_batches(
-        &self,
-        batches: Vec<BatchData>,
-        l2_coinbase: ethers::types::Address,
-    ) -> Result<()> {
+    pub async fn sequence_batches(&self, batches: Vec<BatchData>) -> Result<()> {
         // TODO: refactor gas_limit config
         let gas_limit = ethers::prelude::U256::from(5000000);
 
         self.contract
-            .sequence_batches(batches, l2_coinbase)
+            .sequence_batches(batches)
             .gas(gas_limit)
             .send()
             .await

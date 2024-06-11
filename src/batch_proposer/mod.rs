@@ -7,7 +7,7 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 use tokio::{select, time};
 
-const L2_WATCHER_INTERVAL: Duration = Duration::from_secs(1);
+const L2_WATCHER_INTERVAL: Duration = Duration::from_secs(30);
 pub struct L2Watcher {
     pub db: Arc<Box<dyn Database>>,
     pub l2provider: Provider<Http>,
