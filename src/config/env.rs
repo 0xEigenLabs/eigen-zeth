@@ -15,7 +15,7 @@ pub struct GlobalEnv {
 /// GLOBAL_ENV is a global variable that holds the environment variables,
 /// it is lazy loaded and thread safe
 pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
-    l2addr: std::env::var("ZETH_L2_ADDR").unwrap_or("http://localhost:8546".to_string()),
+    l2addr: std::env::var("ZETH_L2_ADDR").unwrap_or("http://localhost:38546".to_string()),
     prover_addr: std::env::var("PROVER_ADDR").unwrap_or("http://127.0.0.1:50061".to_string()),
     curve_type: std::env::var("CURVE_TYPE").unwrap_or("BN128".to_string()),
     chain_id: std::env::var("CHAIN_ID")

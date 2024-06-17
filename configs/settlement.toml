@@ -6,16 +6,16 @@ private_key = "0xbe825d459385bbb3ba169ac8d59bd05b099b190d8a89aace7e5bc3518e2f1a9
 chain_id = 12345
 
 [ethereum_settlement_config.l1_contracts_addr]
-bridge = "0x3E6D537e9ee319047f773Eae650c17cE15DADf06"
-global_exit = "0x5D026D30F9d2F46dBbd2931f1Ae1eFFA9Eca3A1a"
-zkvm = "0x15414316e4FA6FC84C4736da40a7ee9Ee10775e9"
+bridge = "0x48a22911AF2543b11DDB1F97a321A5dD1dE72761"
+global_exit = "0xd0438bB2b2522D56d498F871fcf786006c180b64"
+zkvm = "0x70B685bc16a066B2800A7E286546c2b51bCfd493"
 
-[ethereum_settlement_config.zeth_config.provider_url]
-provider_url = "http://localhost:8546"
+[ethereum_settlement_config.zeth_config]
+provider_url = "http://localhost:38546"
 
 [ethereum_settlement_config.zeth_config.local_wallet]
 private_key = "0xbe825d459385bbb3ba169ac8d59bd05b099b190d8a89aace7e5bc3518e2f1a9c"
 chain_id = 12345
 
-[ethereum_settlement_config.zeth_contracts_addr.zeth_contracts_addr]
-global_exit = "0x5D026D30F9d2F46dBbd2931f1Ae1eFFA9Eca3A1a"
+[ethereum_settlement_config.zeth_config.zeth_contracts_addr]
+global_exit = "0xd0438bB2b2522D56d498F871fcf786006c180b64"

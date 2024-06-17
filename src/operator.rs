@@ -73,13 +73,13 @@ impl Operator {
         tokio::spawn(async move {
             Settler::proof_worker(arc_db_for_proof_worker, prover, proof_stop_rx).await
         });
-
+        
         let arc_db_for_submit_worker = rollup_db.clone();
         let settlement_provider_for_submit_worker = arc_settlement_provider.clone();
         let l2provider_for_submit_worker = l2provider.clone();
         let (submit_stop_tx, submit_stop_rx) = mpsc::channel::<()>(1);
         tokio::spawn(async move {
-            Settler::submit_worker(
+            Settler::rollup(
                 arc_db_for_submit_worker,
                 l2provider_for_submit_worker,
                 settlement_provider_for_submit_worker,

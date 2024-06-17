@@ -3,12 +3,14 @@ use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
 use anyhow::{anyhow, Result};
-use ethers_core::types::Transaction;
+use ethers_core::types::{BlockId, BlockNumber, Transaction};
 use ethers_providers::{Http, Middleware, Provider};
 use prost::bytes;
 use reth_primitives::{Bytes, TransactionKind, TxLegacy};
 use std::sync::Arc;
 use std::time::Duration;
+use ethers::prelude::U64;
+use log::log;
 use tokio::sync::mpsc;
 
 const PROOF_INTERVAL: Duration = Duration::from_secs(30);
@@ -213,7 +215,7 @@ impl Settler {
         }
     }
 
-    pub(crate) async fn submit_worker(
+    pub(crate) async fn rollup(
         db: Arc<Box<dyn Database>>,
         l2provider: Provider<Http>,
         settlement_provider: Arc<Box<dyn Settlement>>,
@@ -225,7 +227,7 @@ impl Settler {
             tokio::select! {
                 _ = ticker.tick() => {
                     // get the last submitted block
-                    let last_submitted_block = match db.get(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER) {
+                    let last_sequence_finality_block_number = match db.get(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER) {
                         None => {
                             db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
                             0
@@ -236,9 +238,9 @@ impl Settler {
                     };
 
                     // get the last fetched block
-                    let last_fetched_block = match db.get(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER) {
+                    let last_submitted_block = match db.get(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER) {
                         None => {
-                            db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
+                            db.put(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
                             0
                         }
                         Some(block_number_bytes) => {
@@ -246,14 +248,30 @@ impl Settler {
                         }
                     };
 
-                    if last_submitted_block >= last_fetched_block {
+                    if last_submitted_block > last_sequence_finality_block_number {
                         log::info!("no new block to submit, try again later");
                         continue;
                     }
 
                     log::info!("start to submit the block({})", last_submitted_block + 1);
-                    let block = l2provider.get_block_with_txs(last_submitted_block + 1).await.map_err(|e| anyhow!(e))?.ok_or(anyhow!("block not found"))?;
-                    let txs = block.transactions;
+                    let number = l2provider.get_block_number().await.map_err(|e| anyhow!("failed to get block number, err: {:?}", e))?;
+                    log::info!("get_block_number success, number: {:?}", number);
+                    // let block = l2provider.get_block_with_txs(last_submitted_block + 1).await.map_err(|e| anyhow!(e))?.ok_or(anyhow!("block not found"))?;
+                    let block = l2provider.get_block_with_txs(BlockId::Number(BlockNumber::Number(U64::from(last_submitted_block + 1)))).await.map_err(|e| anyhow!("failed to get_block_with_txs, err: {:?}", e))?;
+                    let block = match block {
+                        Some(block) => {
+                            log::info!("block({}) found, {:?}", last_submitted_block + 1, block);
+                            block
+                        },
+                        None => {
+                            log::info!("block({}) not found", last_submitted_block + 1);
+                            continue;
+                        }
+                    };
+                    
+                    let block_clone = block.clone();
+                    let txs = block.transactions.clone();
+                    let txs_clone = block.transactions;
                     let mut batches = Vec::<BatchData>::new();
                     let global_exit_root = settlement_provider.get_global_exit_root().await.map_err(|e| anyhow!("failed to get global exit root, err: {:?}", e))?;
                     for tx in txs {
@@ -281,6 +299,7 @@ impl Settler {
                         };
                         batches.push(batch_data);
                     }
+                    log::info!("block({:?}), txs({:?}), batches({:?})", block_clone, txs_clone, batches);
 
                     // BatchData
                     match settlement_provider.sequence_batches(batches).await {
@@ -383,5 +402,62 @@ pub fn encode_eip155_fields(tx: &TxLegacy, out: &mut dyn bytes::BufMut) {
         id.encode(out);
         0x00u8.encode(out);
         0x00u8.encode(out);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{env, fs};
+    use crate::db::lfs::libmdbx::{Config, open_mdbx_db};
+    use crate::settlement::ethereum::EthereumSettlementConfig;
+    use crate::settlement::{init_settlement_provider, NetworkSpec};
+    use super::*;
+
+    #[tokio::test]
+    #[ignore = "slow"]
+    async fn test_submit_worker() {
+        env::set_var("RUST_LOG", "debug");
+        env_logger::init();
+        let path = "tmp/test_submit_worker";
+        let max_dbs = 20;
+        let config = Config {
+            path: path.to_string(),
+            max_dbs,
+        };
+
+        let db = open_mdbx_db(config).unwrap();
+        let arc_db = Arc::new(db);
+
+        arc_db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), 11_u64.to_be_bytes().to_vec());
+        arc_db.put(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(), 10_u64.to_be_bytes().to_vec());
+
+        let l2provider = Provider::<Http>::try_from("http://localhost:38546").unwrap();
+
+        let settlement_conf_path = "configs/settlement.toml";
+        let settlement_spec = NetworkSpec::Ethereum(EthereumSettlementConfig::from_conf_path(
+            settlement_conf_path,
+        ).unwrap());
+        
+        log::info!("settlement_spec: {:#?}", settlement_spec);
+
+        let settlement_provider = init_settlement_provider(settlement_spec)
+            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e)).unwrap();
+        let arc_settlement_provider = Arc::new(settlement_provider);
+        
+        let (tx, rx) = mpsc::channel(1);
+        let stop_rx = rx;
+        let submit_worker = Settler::rollup(arc_db, l2provider, arc_settlement_provider, stop_rx);
+        
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            tx.send(()).await.unwrap();
+        });
+
+        submit_worker.await.map_err(|e| log::error!("submit_worker error: {:?}", e)).unwrap();
+        // wait for the submit worker to finish
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        
+        fs::remove_dir_all(path).unwrap();
     }
 }

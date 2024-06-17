@@ -11,6 +11,7 @@ use ethers_core::types::{Address, Bytes, U256};
 pub(crate) mod ethereum;
 pub(crate) mod worker;
 
+#[derive(Debug, Clone)]
 pub(crate) struct BatchData {
     pub transactions: Vec<u8>,
     pub global_exit_root: [u8; 32],
