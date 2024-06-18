@@ -18,7 +18,7 @@ const SUBMIT_INTERVAL: Duration = Duration::from_secs(30);
 
 pub(crate) struct Settler {}
 
-// TODO: Use channels, streams, and other methods to flow data between workers, 
+// TODO: Use channels, streams, and other methods to flow data between workers,
 // and use event driven replacement of rotation databases to drive Zeth to run,
 // avoiding frequent database access
 
