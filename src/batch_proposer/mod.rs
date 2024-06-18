@@ -16,6 +16,7 @@ pub struct L2Watcher {
     // pub ticker: time::Interval,
 }
 
+// TODO: Is there any hook, event, or other mechanism that can replace the Provider<Http>
 impl L2Watcher {
     pub fn new(db: Arc<Box<dyn Database>>, l2provider: Provider<Http>) -> Self {
         let (stop_tx, _) = broadcast::channel(1);
