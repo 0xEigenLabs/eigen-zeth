@@ -3,14 +3,13 @@ use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
 use anyhow::{anyhow, Result};
+use ethers::prelude::U64;
 use ethers_core::types::{BlockId, BlockNumber, Transaction};
 use ethers_providers::{Http, Middleware, Provider};
 use prost::bytes;
 use reth_primitives::{Bytes, TransactionKind, TxLegacy};
 use std::sync::Arc;
 use std::time::Duration;
-use ethers::prelude::U64;
-use log::log;
 use tokio::sync::mpsc;
 
 const PROOF_INTERVAL: Duration = Duration::from_secs(30);
@@ -268,12 +267,13 @@ impl Settler {
                             continue;
                         }
                     };
-                    
+
                     let block_clone = block.clone();
                     let txs = block.transactions.clone();
                     let txs_clone = block.transactions;
                     let mut batches = Vec::<BatchData>::new();
                     let global_exit_root = settlement_provider.get_global_exit_root().await.map_err(|e| anyhow!("failed to get global exit root, err: {:?}", e))?;
+                    //
                     for tx in txs {
                         let tx_legacy = convert_to_tx_legacy(&tx)?;
 
@@ -407,11 +407,11 @@ pub fn encode_eip155_fields(tx: &TxLegacy, out: &mut dyn bytes::BufMut) {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, fs};
-    use crate::db::lfs::libmdbx::{Config, open_mdbx_db};
+    use super::*;
+    use crate::db::lfs::libmdbx::{open_mdbx_db, Config};
     use crate::settlement::ethereum::EthereumSettlementConfig;
     use crate::settlement::{init_settlement_provider, NetworkSpec};
-    use super::*;
+    use std::{env, fs};
 
     #[tokio::test]
     #[ignore = "slow"]
@@ -428,36 +428,46 @@ mod tests {
         let db = open_mdbx_db(config).unwrap();
         let arc_db = Arc::new(db);
 
-        arc_db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), 11_u64.to_be_bytes().to_vec());
-        arc_db.put(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(), 10_u64.to_be_bytes().to_vec());
+        arc_db.put(
+            keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(),
+            11_u64.to_be_bytes().to_vec(),
+        );
+        arc_db.put(
+            keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(),
+            10_u64.to_be_bytes().to_vec(),
+        );
 
         let l2provider = Provider::<Http>::try_from("http://localhost:38546").unwrap();
 
         let settlement_conf_path = "configs/settlement.toml";
-        let settlement_spec = NetworkSpec::Ethereum(EthereumSettlementConfig::from_conf_path(
-            settlement_conf_path,
-        ).unwrap());
-        
+        let settlement_spec = NetworkSpec::Ethereum(
+            EthereumSettlementConfig::from_conf_path(settlement_conf_path).unwrap(),
+        );
+
         log::info!("settlement_spec: {:#?}", settlement_spec);
 
         let settlement_provider = init_settlement_provider(settlement_spec)
-            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e)).unwrap();
+            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))
+            .unwrap();
         let arc_settlement_provider = Arc::new(settlement_provider);
-        
+
         let (tx, rx) = mpsc::channel(1);
         let stop_rx = rx;
         let submit_worker = Settler::rollup(arc_db, l2provider, arc_settlement_provider, stop_rx);
-        
+
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
 
             tx.send(()).await.unwrap();
         });
 
-        submit_worker.await.map_err(|e| log::error!("submit_worker error: {:?}", e)).unwrap();
+        submit_worker
+            .await
+            .map_err(|e| log::error!("submit_worker error: {:?}", e))
+            .unwrap();
         // wait for the submit worker to finish
         tokio::time::sleep(Duration::from_secs(5)).await;
-        
+
         fs::remove_dir_all(path).unwrap();
     }
 }

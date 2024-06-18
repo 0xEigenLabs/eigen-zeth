@@ -587,7 +587,7 @@ mod tests {
         );
         println!("{:#?}", input)
     }
-    
+
     #[test]
     fn test_from_conf_path() {
         let conf_path = "configs/settlement.toml";
