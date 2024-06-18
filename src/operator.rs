@@ -47,7 +47,8 @@ impl Operator {
         log::info!("Initializing reth Provider with address: {}", l2addr);
         let l2provider = Provider::<Http>::try_from(l2addr)
             .map_err(|e| anyhow!("Failed to init l2 provider: {:?}", e))?;
-        let mut l2watcher = L2Watcher::new(rollup_db.clone(), l2provider);
+        let l2provider_clone = l2provider.clone();
+        let mut l2watcher = L2Watcher::new(rollup_db.clone(), l2provider_clone);
 
         // start all components of the eigen-zeth full node
         // start the L2Watcher
@@ -55,11 +56,12 @@ impl Operator {
 
         // start the verify worker
         let arc_db_for_verify_worker = rollup_db.clone();
+        let settlement_provider_for_verify_worker = arc_settlement_provider.clone();
         let (verify_stop_tx, verify_stop_rx) = mpsc::channel::<()>(1);
         tokio::spawn(async move {
             Settler::verify_worker(
                 arc_db_for_verify_worker,
-                arc_settlement_provider.clone(),
+                settlement_provider_for_verify_worker,
                 verify_stop_rx,
             )
             .await
@@ -72,12 +74,27 @@ impl Operator {
             Settler::proof_worker(arc_db_for_proof_worker, prover, proof_stop_rx).await
         });
 
+        let arc_db_for_submit_worker = rollup_db.clone();
+        let settlement_provider_for_submit_worker = arc_settlement_provider.clone();
+        let l2provider_for_submit_worker = l2provider.clone();
+        let (submit_stop_tx, submit_stop_rx) = mpsc::channel::<()>(1);
+        tokio::spawn(async move {
+            Settler::rollup(
+                arc_db_for_submit_worker,
+                l2provider_for_submit_worker,
+                settlement_provider_for_submit_worker,
+                submit_stop_rx,
+            )
+            .await
+        });
+
         // wait for the stop signal
         tokio::select! {
             _ = stop_rx.recv() => {
                 l2watcher.stop().await.unwrap();
                 verify_stop_tx.send(()).await.unwrap();
                 proof_stop_tx.send(()).await.unwrap();
+                submit_stop_tx.send(()).await.unwrap();
                 log::info!("Operator stopped");
                 Ok(())
             }

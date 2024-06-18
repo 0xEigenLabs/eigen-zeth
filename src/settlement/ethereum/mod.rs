@@ -4,6 +4,7 @@ pub(crate) mod interfaces;
 use super::BatchData as RustBatchData;
 use crate::settlement::ethereum::interfaces::bridge::BridgeContractClient;
 use crate::settlement::ethereum::interfaces::global_exit_root::GlobalExitRootContractClient;
+use crate::settlement::ethereum::interfaces::zeth_global_exit_root::ZethGlobalExitRootContractClient;
 use crate::settlement::ethereum::interfaces::zkvm::{
     BatchData, G1Point, G2Point, Proof, ZkVMContractClient,
 };
@@ -23,6 +24,7 @@ pub struct EthereumSettlement {
     pub bridge_client: BridgeContractClient,
     pub global_exit_root_client: GlobalExitRootContractClient,
     pub zkvm_contract_client: ZkVMContractClient,
+    pub zeth_global_exit_root_client: ZethGlobalExitRootContractClient,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -30,6 +32,7 @@ pub struct EthereumSettlementConfig {
     pub provider_url: String,
     pub local_wallet: LocalWalletConfig,
     pub l1_contracts_addr: EthContractsAddr,
+    pub zeth_config: ZethConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -43,6 +46,18 @@ pub struct EthContractsAddr {
     pub bridge: String,
     pub global_exit: String,
     pub zkvm: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ZethConfig {
+    pub provider_url: String,
+    pub local_wallet: LocalWalletConfig,
+    pub zeth_contracts_addr: ZethContractsAddr,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ZethContractsAddr {
+    pub global_exit: String,
 }
 
 impl EthereumSettlementConfig {
@@ -62,7 +77,7 @@ impl EthereumSettlementConfig {
 
 impl EthereumSettlement {
     pub fn new(config: EthereumSettlementConfig) -> Result<Self> {
-        let provider = Provider::<Http>::try_from(&config.provider_url).map_err(|e| {
+        let l1_provider = Provider::<Http>::try_from(&config.provider_url).map_err(|e| {
             anyhow!(
                 "Failed to create provider from URL {}: {:?}",
                 config.provider_url,
@@ -70,19 +85,42 @@ impl EthereumSettlement {
             )
         })?;
 
-        let kye_bytes = hex::decode(&config.local_wallet.private_key).map_err(|e| {
+        let zeth_provider =
+            Provider::<Http>::try_from(&config.zeth_config.provider_url).map_err(|e| {
+                anyhow!(
+                    "Failed to create provider from URL {}: {:?}",
+                    config.zeth_config.provider_url,
+                    e
+                )
+            })?;
+
+        let l1_kye_bytes = hex::decode(&config.local_wallet.private_key).map_err(|e| {
             anyhow!(
                 "Failed to decode private key {}: {:?}",
                 config.local_wallet.private_key,
                 e
             )
         })?;
+        let zeth_key_bytes =
+            hex::decode(&config.zeth_config.local_wallet.private_key).map_err(|e| {
+                anyhow!(
+                    "Failed to decode zeth private key {}: {:?}",
+                    config.zeth_config.local_wallet.private_key,
+                    e
+                )
+            })?;
 
-        let secret_key = SecretKey::from_slice(&kye_bytes)
+        let l1_secret_key = SecretKey::from_slice(&l1_kye_bytes)
             .map_err(|e| anyhow!("Failed to parse secret key: {:?}", e))?;
 
-        let local_wallet: LocalWallet =
-            LocalWallet::from(secret_key).with_chain_id(config.local_wallet.chain_id);
+        let zeth_secret_key = SecretKey::from_slice(&zeth_key_bytes)
+            .map_err(|e| anyhow!("Failed to parse zeht secret key: {:?}", e))?;
+
+        let l1_local_wallet: LocalWallet =
+            LocalWallet::from(l1_secret_key).with_chain_id(config.local_wallet.chain_id);
+
+        let zeth_local_wallet: LocalWallet = LocalWallet::from(zeth_secret_key)
+            .with_chain_id(config.zeth_config.local_wallet.chain_id);
 
         let bridge_address: Address = config.l1_contracts_addr.bridge.parse().map_err(|e| {
             anyhow!(
@@ -109,18 +147,40 @@ impl EthereumSettlement {
             )
         })?;
 
+        let zeth_global_exit_root_address: Address = config
+            .zeth_config
+            .zeth_contracts_addr
+            .global_exit
+            .parse()
+            .map_err(|e| {
+                anyhow!(
+                    "Failed to parse zeth global exit root address {}: {:?}",
+                    config.zeth_config.zeth_contracts_addr.global_exit,
+                    e
+                )
+            })?;
+
         Ok(EthereumSettlement {
             bridge_client: BridgeContractClient::new(
                 bridge_address,
-                provider.clone(),
-                local_wallet.clone(),
+                l1_provider.clone(),
+                l1_local_wallet.clone(),
             ),
             global_exit_root_client: GlobalExitRootContractClient::new(
                 global_exit_root_address,
-                provider.clone(),
-                local_wallet.clone(),
+                l1_provider.clone(),
+                l1_local_wallet.clone(),
             ),
-            zkvm_contract_client: ZkVMContractClient::new(zkvm_address, provider, local_wallet),
+            zkvm_contract_client: ZkVMContractClient::new(
+                zkvm_address,
+                l1_provider.clone(),
+                l1_local_wallet.clone(),
+            ),
+            zeth_global_exit_root_client: ZethGlobalExitRootContractClient::new(
+                zeth_global_exit_root_address,
+                zeth_provider,
+                zeth_local_wallet,
+            ),
         })
     }
 }
@@ -260,23 +320,18 @@ impl Settlement for EthereumSettlement {
     // }
     /// ```
     ///
-    async fn sequence_batches(
-        &self,
-        batches: Vec<RustBatchData>,
-        l2_coinbase: Address,
-    ) -> Result<()> {
+    async fn sequence_batches(&self, batches: Vec<RustBatchData>) -> Result<()> {
         let solidity_batches = batches
             .iter()
             .map(|b| BatchData {
                 transactions: Bytes::from(b.transactions.clone()),
                 global_exit_root: b.global_exit_root,
                 timestamp: b.timestamp,
-                min_forced_timestamp: b.min_forced_timestamp,
             })
             .collect();
 
         self.zkvm_contract_client
-            .sequence_batches(solidity_batches, l2_coinbase)
+            .sequence_batches(solidity_batches)
             .await
     }
 
@@ -377,6 +432,12 @@ impl Settlement for EthereumSettlement {
                 p,
                 i,
             )
+            .await
+    }
+
+    async fn get_zeth_last_rollup_exit_root(&self) -> Result<[u8; 32]> {
+        self.zeth_global_exit_root_client
+            .last_rollup_exit_root()
             .await
     }
 }
@@ -525,5 +586,12 @@ mod tests {
             .unwrap()
         );
         println!("{:#?}", input)
+    }
+
+    #[test]
+    fn test_from_conf_path() {
+        let conf_path = "configs/settlement.toml";
+        let config = EthereumSettlementConfig::from_conf_path(conf_path).unwrap();
+        println!("{:#?}", config);
     }
 }

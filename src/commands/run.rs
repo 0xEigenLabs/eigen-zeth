@@ -143,7 +143,7 @@ pub enum SettlementLayer {
 impl RunCmd {
     pub async fn run(&self) -> Result<()> {
         // initialize the logger
-        std::env::set_var("RUST_LOG", self.log_level.to_string());
+        // std::env::set_var("RUST_LOG", self.log_level.to_string());
         env_logger::init();
         log::info!("Initialized logger with level: {}", self.log_level);
 

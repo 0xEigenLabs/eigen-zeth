@@ -27,6 +27,9 @@ reth-interfaces = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd7
 # Database
 reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
 
+# eth
+alloy-rlp = "0.3.4"
+
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
 #reth-ethereum-payload-builder = { path = "../reth/crates/payload/ethereum" }
