@@ -1,6 +1,6 @@
 //! Rust contract client for https://github.com/0xEigenLabs/eigen-bridge-contracts/blob/feature/bridge_contract/src/EigenZkVM.sol
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Ok, Result};
 use ethers::core::types::U256;
 use ethers::middleware::SignerMiddleware;
 use ethers::prelude::LocalWallet;
@@ -50,10 +50,17 @@ impl ZkVMContractClient {
             .await
             .map_err(|e| anyhow!("execute sequence batches transaction failed, {:?}", e))?
             .inspect(|tx_receipt| {
-                log::debug!(
-                    "The sequence batches transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
-                    tx_receipt
-                )
+                if tx_receipt.status.unwrap_or_default().is_zero(){
+                    log::error!(
+                        "The sequence batches transaction execute failed, tx receipt: {:#?}",
+                        tx_receipt
+                    )
+                }else{
+                    log::debug!(
+                        "The sequence batches transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
+                        tx_receipt
+                    )
+                }
             });
 
         Ok(())
@@ -105,10 +112,18 @@ impl ZkVMContractClient {
             .await
             .map_err(|e| anyhow!("execute verify batches transaction failed, {:?}", e))?
             .inspect(|tx_receipt| {
-                log::debug!(
-                    "The verify batches transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
-                    tx_receipt
-                )
+                if tx_receipt.status.unwrap_or_default().is_zero(){
+                    log::error!(
+                        "The verify batches transaction execute failed, tx receipt: {:#?}",
+                        tx_receipt
+                    );
+                }
+                else{
+                    log::debug!(
+                        "The verify batches transaction was successfully confirmed on the ethereum, tx receipt: {:#?}",
+                        tx_receipt
+                    )
+                }
             });
 
         Ok(())
