@@ -61,7 +61,6 @@ impl ZkVMContractClient {
                         tx_receipt
                     )
                 }
-                
             });
 
         Ok(())

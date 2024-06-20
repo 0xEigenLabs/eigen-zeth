@@ -499,7 +499,11 @@ mod tests {
             0_u64.to_be_bytes().to_vec(),
         );
 
-        let next_proof_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), 1);
+        let next_proof_key = format!(
+            "{}{}",
+            std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(),
+            1
+        );
 
         let default_bytes: [u8; 32] = Default::default();
         let proof_data = ProofResult {
@@ -511,7 +515,10 @@ mod tests {
         };
 
         let proof_data_json = serde_json::to_string(&proof_data).unwrap_or_default();
-        arc_db.put(next_proof_key.as_bytes().to_vec(), proof_data_json.as_bytes().to_vec());
+        arc_db.put(
+            next_proof_key.as_bytes().to_vec(),
+            proof_data_json.as_bytes().to_vec(),
+        );
 
         let settlement_conf_path = "configs/settlement.toml";
         let settlement_spec = NetworkSpec::Ethereum(
