@@ -155,7 +155,6 @@ impl Settler {
                             u64::from_be_bytes(block_number_bytes.try_into().unwrap())
                         }
                     };
-
                     let last_verified_block = match db.get(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER) {
                         None => {
                             db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
@@ -183,6 +182,7 @@ impl Settler {
                         // verify the proof
                         // TODO: update the new_local_exit_root
                         let zeth_last_rollup_exit_root = settlement_provider.get_zeth_last_rollup_exit_root().await.map_err(|e| anyhow!("failed to get zeth last rollup exit root, err: {:?}", e))?;
+
                         match settlement_provider.verify_batches(
                             0,
                             last_verified_block,
@@ -434,14 +434,14 @@ mod tests {
 
         arc_db.put(
             keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(),
-            11_u64.to_be_bytes().to_vec(),
+            1_u64.to_be_bytes().to_vec(),
         );
         arc_db.put(
             keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(),
-            10_u64.to_be_bytes().to_vec(),
+            0_u64.to_be_bytes().to_vec(),
         );
 
-        let l2provider = Provider::<Http>::try_from("http://localhost:38546").unwrap();
+        let l2provider = Provider::<Http>::try_from("http://localhost:8546").unwrap();
 
         let settlement_conf_path = "configs/settlement.toml";
         let settlement_spec = NetworkSpec::Ethereum(
@@ -468,6 +468,76 @@ mod tests {
         submit_worker
             .await
             .map_err(|e| log::error!("submit_worker error: {:?}", e))
+            .unwrap();
+        // wait for the submit worker to finish
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "slow"]
+    async fn test_verify_worker() {
+        env::set_var("RUST_LOG", "debug");
+        env_logger::init();
+        let path = "tmp/test_verify_worker";
+        let max_dbs = 20;
+        let config = Config {
+            path: path.to_string(),
+            max_dbs,
+        };
+
+        let db = open_mdbx_db(config).unwrap();
+        let arc_db = Arc::new(db);
+
+        arc_db.put(
+            keys::KEY_LAST_PROVEN_BLOCK_NUMBER.to_vec(),
+            1_u64.to_be_bytes().to_vec(),
+        );
+        arc_db.put(
+            keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(),
+            0_u64.to_be_bytes().to_vec(),
+        );
+
+        let next_proof_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), 1);
+
+        let default_bytes: [u8; 32] = Default::default();
+        let proof_data = ProofResult {
+            block_number: 1,
+            public_input: "[\n  \"8362010813876620668586816087691982027748700171077865203929785134913673568689\"\n]".to_string(),
+            proof: "{\"pi_a\":{\"x\":\"9898772573056133167685730031820439200779677251915533133089180906078340598153\",\"y\":\"4988585277003916341444053304584863613990493280622140059976827625686886539523\"},\"pi_b\":{\"x\":[\"20509617804647477524035568417927205406397155061230874893680539238495862881580\",\"6585671937830049132098354513544251392871629080955562897302125989145227322378\"],\"y\":[\"16600973708004378995096185526104442264785941566440480473110565973138301268148\",\"4748797935380146483285828556664955484346426282325689850322414929184461946949\"]},\"pi_c\":{\"x\":\"13887335001047178786869303446566979485698626327666217004092778514366245776228\",\"y\":\"14978410198885453128070499586881293125336387926725723435864499846753605937804\"},\"protocol\":\"groth16\",\"curve\":\"BN128\"}".to_string(),
+            pre_state_root: default_bytes,
+            post_state_root: default_bytes
+        };
+
+        let proof_data_json = serde_json::to_string(&proof_data).unwrap_or_default();
+        arc_db.put(next_proof_key.as_bytes().to_vec(), proof_data_json.as_bytes().to_vec());
+
+        let settlement_conf_path = "configs/settlement.toml";
+        let settlement_spec = NetworkSpec::Ethereum(
+            EthereumSettlementConfig::from_conf_path(settlement_conf_path).unwrap(),
+        );
+
+        log::info!("settlement_spec: {:#?}", settlement_spec);
+
+        let settlement_provider = init_settlement_provider(settlement_spec)
+            .map_err(|e| anyhow!("Failed to init settlement: {:?}", e))
+            .unwrap();
+        let arc_settlement_provider = Arc::new(settlement_provider);
+
+        let (tx, rx) = mpsc::channel(1);
+        let stop_rx: mpsc::Receiver<()> = rx;
+        let verify_worker = Settler::verify_worker(arc_db, arc_settlement_provider, stop_rx);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+
+            tx.send(()).await.unwrap();
+        });
+
+        verify_worker
+            .await
+            .map_err(|e| log::error!("verify_worker error: {:?}", e))
             .unwrap();
         // wait for the submit worker to finish
         tokio::time::sleep(Duration::from_secs(5)).await;
