@@ -56,6 +56,7 @@ pub struct ProverChannel {
     /// the address of the aggregator
     aggregator_addr: String,
     // TODO: Record state data in ProveStep to allow zeth to continue the current batch upon restart
+    #[allow(dead_code)]
     db: Arc<Box<dyn Database>>,
 }
 
@@ -81,6 +82,8 @@ struct BatchStateRoot {
 #[derive(Debug, Clone)]
 pub enum ExecuteResult {
     Success(ProofResult),
+    // TODO: Fixme
+    #[allow(dead_code)]
     Failed(ErrMsg),
 }
 
