@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time;
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::transport::{Channel, Error};
 
 pub mod prover_service {
     tonic::include_proto!("prover.v1"); // The string specified here must match the proto package name
@@ -39,6 +40,9 @@ pub struct ProverChannel {
     request_sender: Sender<ProverRequest>,
     /// used to receive response from the endpoint
     response_receiver: Receiver<ResponseType>,
+
+    //
+    // request_sender2: tokio::sync::broadcast::Sender<ProverRequest>,
 
     /// final proof
     // final_proof_sender: Sender<Vec<u8>>,
@@ -65,21 +69,41 @@ pub enum ExecuteResult {
 }
 
 /// ProveStep ...
+/// 其中只有batch 有两个阶段：1. 生成chunk 2. 为chunk生成proof
+/// 我们应当记录batch在每个阶段生成的中间数据，以便在失败时使用当前阶段的数据，从当前阶段继续重试，直到成功，不应跳过任何一个阶段
+/// 每个阶段缓存的数据都是为后续阶段提供的，所以每个阶段执行的结果缓存到下个阶段的tuple中，如果当前阶段执行失败则使用当前阶段tuple中的数据继续执行即可
 #[derive(Debug)]
 enum ProveStep {
     Start,
     // TODO: refactor to Batch
-    Batch(BatchId, BlockNumber),
+    Batch(BatchStep),
     Aggregate(BatchId, StartChunk, EndChunk),
     Final(BatchId, RecursiveProof),
     End(ExecuteResult),
+}
+
+#[derive(Debug)]
+enum BatchStep {
+    // TODO: refactor to Batch
+    GenChunk(BatchId, BlockNumber),
+    GenProof(BatchId, RecursiveProof),
 }
 
 impl fmt::Display for ProveStep {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ProveStep::Start => write!(f, "♥ Start"),
-            ProveStep::Batch(_batch_id, no) => write!(f, "♦ Batch: {}", no),
+            // ProveStep::Batch(_batch_id, no) => write!(f, "♦ Batch: {}", no),
+            ProveStep::Batch(b) => {
+                match b {
+                    BatchStep::GenChunk(_batch_id, no) => {
+                        write!(f, "♦ Batch: GenChunk({})", no)
+                    }
+                    BatchStep::GenProof(_batch_id, _) => {
+                        write!(f, "♦ Batch: GenProof(_)")
+                    }
+                }
+            },
             ProveStep::Aggregate(_batch_id, s, e) => write!(f, "♠ Agg: {} -> {}", s, e),
             ProveStep::Final(_batch_id, r) => write!(f, "♣ Final: {:?}", r),
             ProveStep::End(result) => write!(f, "🌹 End: {:?}", result),
@@ -136,21 +160,24 @@ impl ProverChannel {
         //     }
         // }
 
+        // 如果endpoint 出现错误, 则销毁所有endpoint相关资源并在此重新launch
+        // 正常情况下, endpoint 会一直运行, 直到收到 stop 信号会返回 Ok
+        // 其他情况下, 会一直尝试重新连接, 直到连接成功, 并基于记录的step状态及相关数据继续prove
         tokio::spawn(async move {
             loop {
                 match endpoint.launch().await {
+                    // 只有在收到 stop 信号时, 才会返回 Ok
                     Ok(_) => {
                         // stop with the signal
                         return;
                     }
                     Err(e) => {
-                        // stop with the error
-                        // TODO: relaunch the endpoint
+                        // stop with the error, relaunch the endpoint
                         log::error!(
-                            "ProverEndpoint stopped with error, try again later, err: {:?}",
+                            "ProverEndpoint stopped with error: {:?}",
                             e
                         );
-                        time::sleep(Duration::from_secs(10)).await;
+                        log::info!("restarting ProverEndpoint");
                     }
                 }
             }
@@ -184,49 +211,70 @@ impl ProverChannel {
                 ProveStep::Start => {
                     let batch = self.current_batch.unwrap();
                     let batch_id = uuid::Uuid::new_v4().to_string();
-                    ProveStep::Batch(batch_id, batch)
+                    ProveStep::Batch(BatchStep::GenChunk(batch_id, batch))
                 }
 
-                ProveStep::Batch(batch_id, batch) => {
-                    let request = ProverRequest {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        request_type: Some(RequestType::GenBatchProof(GenBatchProofRequest {
-                            batch_id: batch_id.clone(),
-                            batch: Some(Batch {
-                                block_number: vec![*batch],
-                            }),
-                            chain_id: GLOBAL_ENV.chain_id,
-                            program_name: GLOBAL_ENV.program_name.clone(),
-                        })),
-                    };
-                    // send request to the endpoint
-                    self.request_sender.send(request).await?;
+                // ProveStep::Batch(batch_id, batch) => {
+                    ProveStep::Batch(batch_step) => {
+                        match batch_step {
+                            BatchStep::GenChunk(batch_id, batch) => {
+                                let request = ProverRequest {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    // request_type: Some(RequestType::GenBatchProof(GenBatchProofRequest {
+                                    //     batch_id: batch_id.clone(),
+                                    //     batch: Some(Batch {
+                                    //         block_number: vec![*batch],
+                                    //     }),
+                                    //     chain_id: GLOBAL_ENV.chain_id,
+                                    //     program_name: GLOBAL_ENV.program_name.clone(),
+                                    // })),
+                                    request_type: Some(RequestType::GenBatchProof(Step::))
+                                };
+                                // send request to the endpoint
+                                self.request_sender.send(request).await?;
 
-                    // waiting for the response from the endpoint
-                    if let Some(ResponseType::GenBatchProof(gen_batch_proof_response)) =
-                        self.response_receiver.recv().await
-                    {
-                        if gen_batch_proof_response.result_code
-                            == ProofResultCode::CompletedOk as i32
-                        {
-                            let chunks = gen_batch_proof_response
-                                .batch_proof_result
-                                .unwrap()
-                                .chunk_proofs;
-                            let start_chunk = chunks.first().unwrap().clone().proof;
-                            let end_chunk = chunks.last().unwrap().clone().proof;
-                            ProveStep::Aggregate(batch_id.clone(), start_chunk, end_chunk)
-                        } else {
-                            ProveStep::End(ExecuteResult::Failed(format!(
-                                "gen batch proof failed, err: {}",
-                                gen_batch_proof_response.error_message
-                            )))
+                                // waiting for the response from the endpoint
+                                if let Some(ResponseType::GenBatchProof(gen_batch_proof_response)) =
+                                    // 这里应当添加一个异常情况的channel,同时监听两个channel, 一个是正常的response, 一个是异常的response
+                                    // 有可能发生三种情况
+                                    // 1. 正常返回，进入下一个阶段，正常发送request, 等待response
+                                    //      a. 返回success -> 进入下一个阶段
+                                    //      b. 返回failed -> 重新执行当前阶段，直到成功 TODO: 如果其中一个阶段执行prove失败，应当从当前阶段重试还是从头开始(感觉应当从当前阶段重试, 前面的步骤执行成功重试没有意义，结果应该是一样的)
+                                    // 2. 正常返回，但是返回之后prover server挂掉了，但是这里感知不到所以会继续进入下一阶段，然后发送request,
+                                    //      但是该Request不会被取出，会一直等待client重新连接，然后取出该request,执行并返回response,对于这里来讲和正常流程一样，感知不到server宕机
+                                    //      a. 同1.a一样 返回success -> 进入下一个阶段
+                                    //      b. 同1.b一样 返回failed -> 重新执行当前阶段，直到成功
+                                    // 3. 没有返回response, 发送request过程中挂掉或者发送完成之后没有返回response就宕机，endpoint会立即重启，重启后该request丢失，
+                                    //      所以需要重启
+                                    self.response_receiver.recv().await
+                                {
+                                    if gen_batch_proof_response.result_code
+                                        == ProofResultCode::CompletedOk as i32
+                                    {
+                                        let chunks = gen_batch_proof_response
+                                            .batch_proof_result
+                                            .unwrap()
+                                            .chunk_proofs;
+                                        let start_chunk = chunks.first().unwrap().clone().proof;
+                                        let end_chunk = chunks.last().unwrap().clone().proof;
+                                        ProveStep::Aggregate(batch_id.clone(), start_chunk, end_chunk)
+                                    } else {
+                                        ProveStep::End(ExecuteResult::Failed(format!(
+                                            "gen batch proof failed, err: {}",
+                                            gen_batch_proof_response.error_message
+                                        )))
+                                    }
+                                } else {
+                                    ProveStep::End(ExecuteResult::Failed(
+                                        "gen batch proof failed, err: invalid response".to_string(),
+                                    ))
+                                }
+                            }
+                            BatchStep::GenProof(batch_id, _) => {
+
+                            }
                         }
-                    } else {
-                        ProveStep::End(ExecuteResult::Failed(
-                            "gen batch proof failed, err: invalid response".to_string(),
-                        ))
-                    }
+
                 }
 
                 ProveStep::Aggregate(batch_id, start_chunk, end_chunk) => {
@@ -385,14 +433,32 @@ impl ProverEndpoint {
     }
 
     /// launch the endpoint
-    pub async fn launch(&mut self) -> Result<()> {
-        let mut client = ProverServiceClient::connect(self.addr.clone()).await?;
+    pub async fn launch(
+        &mut self,
+    ) -> Result<()> {
+        // let mut client = ProverServiceClient::connect(self.addr.clone()).await?;
+        // 尝试连接到 prover server, 直到连接成功
+        let mut client;
+        loop {
+            match ProverServiceClient::connect(self.addr.clone()).await {
+                Ok(c) => {
+                    client = c;
+                    log::info!("ProverEndpoint connected to {}", self.addr);
+                    break;
+                }
+                Err(e) => {
+                    log::error!("ProverEndpoint connect to server: {} failed: {:?}, try again later", self.addr, e);
+                    time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        }
 
-        log::info!("ProverEndpoint connected to {}", self.addr);
+        let (tx, rx) = mpsc::channel(10);
 
         // take the request receiver, create a stream
         // self.request_receiver will be None after this
-        let request = ReceiverStream::new(self.request_receiver.take().unwrap());
+        // let request = ReceiverStream::new(self.request_receiver.take().unwrap());
+        let request = ReceiverStream::new(rx);
 
         // waiting for the first request
         let response = client.prover_stream(request).await?;
@@ -403,6 +469,12 @@ impl ProverEndpoint {
                 _ = self.stop_endpoint_rx.recv() => {
                     log::info!("ProverEndpoint stopped");
                     return Ok(());
+                }
+                // TODO: 是否需要优化这里
+                ProverRequest = self.request_receiver.recv() => {
+                    if let Some(request) = ProverRequest {
+                        tx.send(request).await?;
+                    }
                 }
                 recv_msg_result = resp_stream.message() => {
                     match recv_msg_result {
@@ -428,13 +500,39 @@ impl ProverEndpoint {
                                 }
                             }
                         }
+                        
+                        // Ok(None) Err(e) 时都需要根据当前状态进行后续处理
+                        // 所以处理逻辑相同
+                        // 状态管理逻辑应当在 ProverChannel 中实现
+                        // 所以这里只需要重启即可
+                        // NOTE: 重启之前需要通知 ProverChannel，以便ProverChannel根据状态进行当前阶段的重新执行
+                        // 所以这里需要一个额外的字段记录一下，当前ProverChannel发送过来的请求有没有返回对应的response
+                        // 1. 已经返回，直接重启
+                        // 2. 没有返回则返回一个错误信号，让ProverChannel进行后续处理
+                        //
+                        //
+                        // 如果这里添加一个rpc error channel, 此时可能发生的情况
+                        // 1. 正常返回response, 等待下一个请求的发送并等待response
+                        //      此时error channel为空
+                        //      此时response channel为正常返回的response，ProverChannel会接受到response会进入下一个阶段并发送下一个request
+                        // 2. response返回之前rpc出现错误断开连接，此时发送一个错误信号到error channel, 然后尝试重连
+                        //      a. request刚发送到 request channel, 并没有被取出, 所以该request并没有丢失, 然后发生了rpc错误，断开连接
+                        //          此时response channel 为空, ProverChannel不会接受到任何response, 也不会发送任何request
+                        //          此时error channel 有一个错误信号，ProverChannel会接收当前错误信号，并停止继续监听response channel等待该request的相应
+                        //          TODO: 这里的处理方案：清空request channel, 丢弃当前request, 然后尝试重连
+                        //      b. request已经被取出，但并没有等到对应的response返回, 此时发送一个错误信号到error channel, 然后尝试重连
+                        //          此时response channel 为空, ProverChannel不会接受到任何response
+                        //          此时error channel 有一个错误信号，ProverChannel会接收当前错误信号，并停止继续监听response channel等待该request的相应
+                        //          TODO: 这里的处理方案：清空request channel, 丢弃当前request, 然后尝试重连
+                        // 3. response返回之后，下一个request发送之前rpc出现错误断开连接，此时发送一个错误信号到error channel, 然后尝试重连
+                        //      这里，开始监听response channel和error channel时会立即接收到一个错误信号，然后停止继续监听response channel等待该request的相应
+                        //      TODO: 这里的处理方案：清空request channel, 丢弃当前request, 然后尝试重连
+                        //      原因：在并发
                         Ok(None) => {
-                            log::info!("Stream ended");
-                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
+
                         }
                         Err(e) => {
-                            log::error!("Error receiving message: {}", e);
-                            tokio::time::sleep(Duration::from_secs(10)).await; // add delay
+
                         }
                     }
                 }
