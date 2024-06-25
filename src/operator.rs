@@ -29,7 +29,8 @@ impl Operator {
     ) -> Result<()> {
         // initialize all components of the eigen-zeth full node
         // initialize the prover
-        let prover = ProverChannel::new(prover_addr, aggregator_addr);
+        let arc_db_for_prover = rollup_db.clone();
+        let prover = ProverChannel::new(prover_addr, aggregator_addr, arc_db_for_prover);
 
         // initialize the settlement layer
         let settlement_provider = init_settlement_provider(settlement_spec)
