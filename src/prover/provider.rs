@@ -670,12 +670,34 @@ impl ProverEndpoint {
                         }
 
                         Ok(None) => {
-                            // TODO: 清空request channel, 丢弃当前request, 发送错误信号到error channel，然后尝试重连
+                            loop {
+                                match self.request_receiver.try_recv() {
+                                    Ok(req) => {
+                                        log::info!("drop request: {:?}", req);
+                                    },
+                                    Err(_) => {
+                                        log::info!("request channel is cleared");
+                                        break;
+                                    }
+                                }
+                            }
                             self.endpoint_restart_signal_sender.send(()).await?;
+                            bail!("ProverEndpoint stopped, server closed the connection");
                         }
-                        Err(_e) => {
-                            // TODO: 清空request channel, 丢弃当前request, 发送错误信号到error channel，然后尝试重连
+                        Err(e) => {
+                            loop {
+                                match self.request_receiver.try_recv() {
+                                    Ok(req) => {
+                                        log::info!("drop request: {:?}", req);
+                                    },
+                                    Err(_) => {
+                                        log::info!("request channel is cleared");
+                                        break;
+                                    }
+                                }
+                            }
                             self.endpoint_restart_signal_sender.send(()).await?;
+                            bail!("ProverEndpoint stopped with error: {:?}", e);
                         }
                     }
                 }
