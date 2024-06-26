@@ -1,3 +1,4 @@
+use crate::config::env::GLOBAL_ENV;
 use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};
@@ -7,6 +8,7 @@ use ethers::prelude::U64;
 use ethers_core::types::{BlockId, BlockNumber, Transaction};
 use ethers_providers::{Http, Middleware, Provider};
 use prost::bytes;
+use reqwest::Client;
 use reth_primitives::{Bytes, TransactionKind, TxLegacy};
 use std::sync::Arc;
 use std::time::Duration;
@@ -180,8 +182,26 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()) {
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-                        // TODO: update the new_local_exit_root
-                        let zeth_last_rollup_exit_root = settlement_provider.get_zeth_last_rollup_exit_root().await.map_err(|e| anyhow!("failed to get zeth last rollup exit root, err: {:?}", e))?;
+
+                        let bridge_service_client = Client::new();
+                        let respose = bridge_service_client
+                            .get(format!("{}/get-root", GLOBAL_ENV.bridge_service_addr.clone()))
+                            .query(&[("block_num", proof_data.block_number)])
+                            .send()
+                            .await?;
+
+                        let mut zeth_last_rollup_exit_root = [0u8; 32];
+                        if respose.status().is_success() {
+                            let body = respose.text().await?;
+                            let parsed_json: serde_json::Value = serde_json::from_str(&body).unwrap();
+                            let rollup_exit_root = parsed_json["rollup_exit_root"].as_str().unwrap_or_default();
+                            let rollup_exit_root_bytes = hex::decode(&rollup_exit_root[2..]).expect("Failed to decode hex string");
+
+                            zeth_last_rollup_exit_root.copy_from_slice(&rollup_exit_root_bytes);
+                            log::debug!("rollup_exit_root: {}", rollup_exit_root);
+                        } else {
+                            log::error!("Request failed, response: {:?}", respose);
+                        }
 
                         match settlement_provider.verify_batches(
                             0,
@@ -550,5 +570,37 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(5)).await;
 
         fs::remove_dir_all(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
+        let bridge_service_client = Client::new();
+        let respose = bridge_service_client
+            .get(format!(
+                "{}/get-root",
+                GLOBAL_ENV.bridge_service_addr.clone()
+            ))
+            .query(&[("block_num", 1)])
+            .send()
+            .await?;
+
+        if respose.status().is_success() {
+            let body = respose.text().await?;
+            let parsed_json: serde_json::Value = serde_json::from_str(&body).unwrap();
+            let rollup_exit_root = parsed_json["rollup_exit_root"].as_str().unwrap_or_default();
+            let rollup_exit_root_bytes =
+                hex::decode(&rollup_exit_root[2..]).expect("Failed to decode hex string");
+            let mut zeth_last_rollup_exit_root = [0u8; 32];
+            zeth_last_rollup_exit_root.copy_from_slice(&rollup_exit_root_bytes);
+            println!("rollup_exit_root: {}", rollup_exit_root);
+            println!(
+                "zeth_last_rollup_exit_root: {:?}",
+                zeth_last_rollup_exit_root
+            );
+            Ok(())
+        } else {
+            println!("Request failed with status: {}", respose.status());
+            Err("Request failed".into())
+        }
     }
 }
