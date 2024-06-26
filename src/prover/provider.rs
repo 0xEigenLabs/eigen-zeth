@@ -6,6 +6,7 @@
 //! 3) If the task is finished, update the status into proof database, hence the extended RPC module will fetch this and return it to SDK.
 
 use crate::config::env::GLOBAL_ENV;
+use crate::db::keys::KEY_PROVE_STEP_RECORD;
 use crate::db::{Database, ProofResult};
 use crate::prover::provider::prover_service::gen_batch_proof_response;
 use crate::prover::provider::prover_service::prover_request::RequestType;
@@ -17,6 +18,7 @@ use crate::prover::provider::prover_service::{
     ProofResultCode, ProverRequest,
 };
 use anyhow::{anyhow, bail, Result};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -73,13 +75,13 @@ type ErrMsg = String;
 
 type BatchId = String;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct BatchStateRoot {
     pre_state_root: [u8; 32],
     post_state_root: [u8; 32],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExecuteResult {
     Success(ProofResult),
     // TODO: Fixme
@@ -87,8 +89,15 @@ pub enum ExecuteResult {
     Failed(ErrMsg),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProverStepRecord {
+    // refactor to Batch
+    block_number: Option<BlockNumber>,
+    step: Option<ProveStep>,
+}
+
 /// ProveStep ...
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum ProveStep {
     Start,
     // TODO: refactor to Batch
@@ -98,19 +107,19 @@ enum ProveStep {
     End(ExecuteResult),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum BatchStep {
     // TODO: refactor to Batch
     GenChunk(BatchId, BlockNumber),
     GenProof(BatchId, TaskId, ChunkCount, L2BatchData, BatchStateRoot),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum AggregateStep {
     Aggregate(BatchId, StartChunk, EndChunk, BatchStateRoot),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 enum FinalStep {
     Final(BatchId, RecursiveProof, BatchStateRoot),
 }
@@ -221,14 +230,61 @@ impl ProverChannel {
         self.clean_current_batch()?;
         result.map_err(|e| anyhow!("execute batch:{} failed: {:?}", batch, e))
     }
+    fn record_prove_step(&mut self, step: ProveStep) -> Result<()> {
+        self.db.put(
+            KEY_PROVE_STEP_RECORD.to_vec(),
+            serde_json::to_vec(&ProverStepRecord {
+                block_number: self.current_batch,
+                step: Some(step),
+            })?,
+        );
+        Ok(())
+    }
 
     async fn entry_step(&mut self) -> Result<ProofResult> {
+        // load the ProverStepRecord
+        match self.db.get(KEY_PROVE_STEP_RECORD) {
+            Some(record) => {
+                let record: Result<ProverStepRecord, _> = serde_json::from_slice(&record);
+                match record {
+                    Ok(record) => {
+                        if record.block_number.is_some() && record.step.is_some() {
+                            if record.block_number.unwrap() == self.current_batch.unwrap() {
+                                // execute from the record step
+                                self.step = record.step.unwrap();
+                                log::info!("execute from the record step: {:?}", self.step);
+                            } else {
+                                log::info!("invalid ProverStepRecord, ignore it, execute from the start step");
+                            }
+                        } else {
+                            log::info!(
+                                "invalid ProverStepRecord, ignore it, execute from the start step"
+                            );
+                        }
+                    }
+                    Err(_) => {
+                        log::info!(
+                            "parse ProverStepRecord failed, ignore it, execute from the start step"
+                        );
+                    }
+                }
+            }
+            None => {
+                log::info!("ProverStepRecord not found, execute from the start step");
+            }
+        };
+
         loop {
             self.step = match &self.step {
                 ProveStep::Start => {
                     let batch = self.current_batch.unwrap();
+                    // TODO: remove the batch_id
                     let batch_id = uuid::Uuid::new_v4().to_string();
-                    ProveStep::Batch(BatchStep::GenChunk(batch_id, batch))
+
+                    let next_step = ProveStep::Batch(BatchStep::GenChunk(batch_id, batch));
+                    self.record_prove_step(next_step.clone())?;
+
+                    next_step
                 }
 
                 ProveStep::Batch(batch_step) => {
@@ -270,7 +326,9 @@ impl ProverChannel {
                                                 };
 
 
-                                                ProveStep::Batch(BatchStep::GenProof(batch_id.clone(), task_id, chunk_count, l2_batch_data, batch_state_root))
+                                                let next_step = ProveStep::Batch(BatchStep::GenProof(batch_id.clone(), task_id, chunk_count, l2_batch_data, batch_state_root));
+                                                                    self.record_prove_step(next_step.clone())?;
+                                                next_step
 
                                             } else {
                                                 log::error!("gen batch chunk failed, err: {}, try again", gen_batch_chunks_result.error_message);
@@ -328,7 +386,9 @@ impl ProverChannel {
 
                                           let start_chunk = chunks.first().unwrap().clone().proof;
                                           let end_chunk = chunks.last().unwrap().clone().proof;
-                                          ProveStep::Aggregate(AggregateStep::Aggregate(batch_id.clone(), start_chunk, end_chunk, batch_state_root.clone()))
+                                          let next_step = ProveStep::Aggregate(AggregateStep::Aggregate(batch_id.clone(), start_chunk, end_chunk, batch_state_root.clone()));
+                                                                    self.record_prove_step(next_step.clone())?;
+                                            next_step
 
                                        } else {
                                           log::error!("gen chunk proof failed, err: {}, try again", gen_chunk_proof_result.error_message);
@@ -383,11 +443,13 @@ impl ProverChannel {
                                 {
                                     let recursive_proof =
                                         gen_aggregated_proof_response.result_string;
-                                    ProveStep::Final(FinalStep::Final(
+                                    let next_step = ProveStep::Final(FinalStep::Final(
                                         batch_id.clone(),
                                         recursive_proof,
                                         batch_state_root.clone(),
-                                    ))
+                                    ));
+                                    self.record_prove_step(next_step.clone())?;
+                                    next_step
                                 } else {
                                     log::error!(
                                         "gen aggregated proof failed, err: {}, try again",
@@ -430,13 +492,16 @@ impl ProverChannel {
                                 {
                                     if let Some(final_proof) = gen_final_proof_response.final_proof
                                     {
-                                        ProveStep::End(ExecuteResult::Success(ProofResult {
-                                            block_number: self.current_batch.unwrap(),
-                                            proof: final_proof.proof,
-                                            public_input: final_proof.public_input,
-                                            pre_state_root: batch_state_root.pre_state_root,
-                                            post_state_root: batch_state_root.post_state_root,
-                                        }))
+                                        let next_step =
+                                            ProveStep::End(ExecuteResult::Success(ProofResult {
+                                                block_number: self.current_batch.unwrap(),
+                                                proof: final_proof.proof,
+                                                public_input: final_proof.public_input,
+                                                pre_state_root: batch_state_root.pre_state_root,
+                                                post_state_root: batch_state_root.post_state_root,
+                                            }));
+                                        self.record_prove_step(next_step.clone())?;
+                                        next_step
                                     } else {
                                         log::error!(
                                             "gen final proof failed, err: {}, try again",
@@ -464,6 +529,8 @@ impl ProverChannel {
                 ProveStep::End(execute_result) => {
                     let result = (*execute_result).clone();
                     // reset smt state
+                    // clear the ProveStepRecord
+                    self.db.del(KEY_PROVE_STEP_RECORD.to_vec());
                     self.step = ProveStep::Start;
 
                     return match result {
