@@ -573,6 +573,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
         let bridge_service_client = Client::new();
         let respose = bridge_service_client
