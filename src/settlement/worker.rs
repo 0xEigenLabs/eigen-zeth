@@ -100,8 +100,7 @@ impl Settler {
                                             db.put(keys::KEY_LAST_PROVEN_BLOCK_NUMBER.to_vec(), block_no.to_be_bytes().to_vec());
                                         }
                                         Err(e) => {
-                                            log::error!("execute batch {} failed: {:?}", block_no, e);
-                                            // TODO: retry or skip?
+                                            panic!("execute batch {} failed: {:?}", block_no, e);
                                         }
                                     }
 
