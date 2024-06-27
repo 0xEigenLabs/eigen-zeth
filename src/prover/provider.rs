@@ -321,8 +321,8 @@ impl ProverChannel {
                                                 let chunk_count = gen_batch_chunks_result.chunk_count;
                                                 let l2_batch_data = gen_batch_chunks_result.batch_data;
                                                 let batch_state_root = BatchStateRoot {
-                                                    pre_state_root: <[u8; 32]>::try_from(gen_batch_chunks_result.pre_state_root).map_err(|_| anyhow!(""))?,
-                                                    post_state_root: <[u8; 32]>::try_from(gen_batch_chunks_result.post_state_root).map_err(|_| anyhow!(""))?,
+                                                    pre_state_root: <[u8; 32]>::try_from(gen_batch_chunks_result.pre_state_root).map_err(|e| anyhow!("parse the pre_state_root failed, {:?}", e))?,
+                                                    post_state_root: <[u8; 32]>::try_from(gen_batch_chunks_result.post_state_root).map_err(|e| anyhow!("parse the post_state_root failed, {:?}", e))?,
                                                 };
 
 
