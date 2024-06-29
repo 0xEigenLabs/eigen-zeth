@@ -464,6 +464,22 @@ async fn retry_get_root(
     bridge_service_client: &Client,
     db: Arc<Box<dyn Database>>,
 ) -> Result<Option<[u8; 32]>> {
+    let rollup_exit_root: [u8; 32] = match db.get(
+        format!(
+            "{:?}{}",
+            std::str::from_utf8(prefix::PREFIX_ROLLUP_EXIT_ROOT).unwrap(),
+            block
+        )
+        .as_bytes(),
+    ) {
+        Some(rollup_exit_root) => rollup_exit_root.try_into().unwrap_or([0u8; 32]),
+        None => [0u8; 32],
+    };
+
+    if rollup_exit_root != [0u8; 32] {
+        return Ok(Some(rollup_exit_root));
+    }
+
     let mut attempts = 0;
     while attempts < RETRIES {
         let respose = bridge_service_client
