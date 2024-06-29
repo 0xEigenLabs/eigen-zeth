@@ -205,8 +205,6 @@ impl Settler {
                             }
                             Err(e) => {
                                 log::error!("verify proof failed, block({}), err: {:?}",proof_data.block_number, e);
-                                // TODO:
-                                db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), proof_data.block_number.to_be_bytes().to_vec());
                             }
                         }
                     };
