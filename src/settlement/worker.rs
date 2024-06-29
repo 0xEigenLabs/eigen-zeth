@@ -17,6 +17,7 @@ use tokio::sync::mpsc;
 const PROOF_INTERVAL: Duration = Duration::from_secs(30);
 const VERIFY_INTERVAL: Duration = Duration::from_secs(30);
 const SUBMIT_INTERVAL: Duration = Duration::from_secs(30);
+const RETRIES: usize = 3;
 
 pub(crate) struct Settler {}
 
@@ -444,21 +445,18 @@ pub async fn get_last_rollup_exit_root(
     }
 
     let zeth_last_rollup_exit_root =
-        match retry_get_root(block_number, bridge_service_client, db.clone()).await? {
-            Some(result) => result,
-            None => [0u8; 32],
-        };
+        (retry_get_root(block_number, bridge_service_client, db.clone()).await?)
+            .unwrap_or([0u8; 32]);
 
     let client_clone = bridge_service_client.clone();
-    let db_clone = db.clone();
     tokio::spawn(async move {
         for block in (block_number + 1)..=latest_block {
-            if let Err(e) = retry_get_root(block, &client_clone, db_clone.clone()).await {
+            if let Err(e) = retry_get_root(block, &client_clone, db.clone()).await {
                 log::error!("Error processing block {}: {:?}", block, e);
             }
         }
     });
-    return Ok(zeth_last_rollup_exit_root);
+    Ok(zeth_last_rollup_exit_root)
 }
 
 async fn retry_get_root(
@@ -466,7 +464,6 @@ async fn retry_get_root(
     bridge_service_client: &Client,
     db: Arc<Box<dyn Database>>,
 ) -> Result<Option<[u8; 32]>> {
-    const RETRIES: usize = 3;
     let mut attempts = 0;
     while attempts < RETRIES {
         let respose = bridge_service_client
@@ -672,17 +669,9 @@ mod tests {
         let db = open_mdbx_db(config).unwrap();
         let arc_db = Arc::new(db);
 
-        arc_db.put(
-            keys::KEY_LAST_PROVEN_BLOCK_NUMBER.to_vec(),
-            1_u64.to_be_bytes().to_vec(),
-        );
-        arc_db.put(
-            keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(),
-            0_u64.to_be_bytes().to_vec(),
-        );
         let zeth_last_rollup_exit_root =
             get_last_rollup_exit_root(1, &bridge_service_client, arc_db, 13).await?;
-        println!(
+        log::info!(
             "zeth_last_rollup_exit_root: {:?}",
             zeth_last_rollup_exit_root
         );
