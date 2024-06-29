@@ -41,7 +41,6 @@ pub(crate) mod keys {
 pub(crate) mod prefix {
     pub const PREFIX_BATCH_PROOF: &[u8] = b"BATCH_PROOF_";
     pub const PREFIX_BLOCK_STATUS: &[u8] = b"BLOCK_STATUS_";
-    pub const PREFIX_ROLLUP_EXIT_ROOT: &[u8] = b"ROLLUP_EXIT_ROOT_";
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]

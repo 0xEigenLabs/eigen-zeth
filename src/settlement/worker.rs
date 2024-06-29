@@ -17,7 +17,6 @@ use tokio::sync::mpsc;
 const PROOF_INTERVAL: Duration = Duration::from_secs(30);
 const VERIFY_INTERVAL: Duration = Duration::from_secs(30);
 const SUBMIT_INTERVAL: Duration = Duration::from_secs(30);
-const RETRIES: usize = 3;
 
 pub(crate) struct Settler {}
 
@@ -168,16 +167,6 @@ impl Settler {
                         }
                     };
 
-                    let last_submitted_block = match db.get(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER) {
-                        None => {
-                            // db.put(keys::KEY_LAST_SEQUENCE_FINALITY_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
-                            0
-                        }
-                        Some(block_number_bytes) => {
-                            u64::from_be_bytes(block_number_bytes.try_into().unwrap())
-                        }
-                    };
-
                     log::info!("last proven block({}), last verified block({})", last_proven_block, last_verified_block);
 
                     // if the last proven block is less than or equal to the last verified block, skip
@@ -193,8 +182,7 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()) {
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-
-                        let zeth_last_rollup_exit_root = get_last_rollup_exit_root(proof_data.block_number, &bridge_service_client, db.clone(), last_submitted_block).await?;
+                        let zeth_last_rollup_exit_root = get_last_rollup_exit_root(proof_data.block_number, &bridge_service_client).await?;
 
                         match settlement_provider.verify_batches(
                             0,
@@ -425,108 +413,42 @@ pub fn encode_eip155_fields(tx: &TxLegacy, out: &mut dyn bytes::BufMut) {
 pub async fn get_last_rollup_exit_root(
     block_number: u64,
     bridge_service_client: &Client,
-    db: Arc<Box<dyn Database>>,
-    latest_block: u64,
 ) -> Result<[u8; 32]> {
-    let rollup_exit_root: [u8; 32] = match db.get(
-        format!(
-            "{:?}{}",
-            std::str::from_utf8(prefix::PREFIX_ROLLUP_EXIT_ROOT).unwrap(),
-            block_number
-        )
-        .as_bytes(),
-    ) {
-        Some(rollup_exit_root) => rollup_exit_root.try_into().unwrap_or([0u8; 32]),
-        None => [0u8; 32],
-    };
+    let respose = bridge_service_client
+        .get(format!(
+            "{}/get-root",
+            GLOBAL_ENV.bridge_service_addr.clone()
+        ))
+        .query(&[("block_num", block_number)])
+        .send()
+        .await;
+    let mut last_rollup_exit_root = [0u8; 32];
+    match respose {
+        Ok(res) => {
+            if res.status().is_success() {
+                let body = res.text().await?;
+                let parsed_json: serde_json::Value = serde_json::from_str(&body).unwrap();
+                let rollup_exit_root = parsed_json["rollup_exit_root"].as_str().unwrap_or_default();
+                let rollup_exit_root_bytes =
+                    hex::decode(&rollup_exit_root[2..]).expect("Failed to decode hex string");
 
-    if rollup_exit_root != [0u8; 32] {
-        return Ok(rollup_exit_root);
-    }
-
-    let zeth_last_rollup_exit_root =
-        (retry_get_root(block_number, bridge_service_client, db.clone()).await?)
-            .unwrap_or([0u8; 32]);
-
-    let client_clone = bridge_service_client.clone();
-    tokio::spawn(async move {
-        for block in (block_number + 1)..=latest_block {
-            if let Err(e) = retry_get_root(block, &client_clone, db.clone()).await {
-                log::error!("Error processing block {}: {:?}", block, e);
+                last_rollup_exit_root.copy_from_slice(&rollup_exit_root_bytes);
+                log::debug!(
+                    "block: {}, rollup_exit_root: {}",
+                    block_number,
+                    rollup_exit_root
+                );
+            } else {
+                log::error!("Request failed, response: {:?}", res);
             }
         }
-    });
-    Ok(zeth_last_rollup_exit_root)
-}
-
-async fn retry_get_root(
-    block: u64,
-    bridge_service_client: &Client,
-    db: Arc<Box<dyn Database>>,
-) -> Result<Option<[u8; 32]>> {
-    let rollup_exit_root: [u8; 32] = match db.get(
-        format!(
-            "{:?}{}",
-            std::str::from_utf8(prefix::PREFIX_ROLLUP_EXIT_ROOT).unwrap(),
-            block
-        )
-        .as_bytes(),
-    ) {
-        Some(rollup_exit_root) => rollup_exit_root.try_into().unwrap_or([0u8; 32]),
-        None => [0u8; 32],
-    };
-
-    if rollup_exit_root != [0u8; 32] {
-        return Ok(Some(rollup_exit_root));
-    }
-
-    let mut attempts = 0;
-    while attempts < RETRIES {
-        let respose = bridge_service_client
-            .get(format!(
-                "{}/get-root",
-                GLOBAL_ENV.bridge_service_addr.clone()
-            ))
-            .query(&[("block_num", block)])
-            .send()
-            .await;
-        let mut last_rollup_exit_root = [0u8; 32];
-        match respose {
-            Ok(res) => {
-                if res.status().is_success() {
-                    let body = res.text().await?;
-                    let parsed_json: serde_json::Value = serde_json::from_str(&body).unwrap();
-                    let rollup_exit_root =
-                        parsed_json["rollup_exit_root"].as_str().unwrap_or_default();
-                    let rollup_exit_root_bytes =
-                        hex::decode(&rollup_exit_root[2..]).expect("Failed to decode hex string");
-
-                    last_rollup_exit_root.copy_from_slice(&rollup_exit_root_bytes);
-                    db.put(
-                        format!(
-                            "{:?}{}",
-                            std::str::from_utf8(prefix::PREFIX_ROLLUP_EXIT_ROOT).unwrap(),
-                            block
-                        )
-                        .as_bytes()
-                        .to_vec(),
-                        last_rollup_exit_root.to_vec(),
-                    );
-                    log::debug!("block: {}, rollup_exit_root: {}", block, rollup_exit_root);
-                    return Ok(Some(last_rollup_exit_root));
-                } else {
-                    log::error!("Request failed, response: {:?}", res);
-                }
-            }
-            Err(e) => {
-                log::error!("Request error: {:?}", e);
-            }
+        Err(e) => {
+            log::error!("Request error: {:?}", e);
         }
-        attempts += 1;
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
     }
-    Ok(None)
+    Ok(last_rollup_exit_root)
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,27 +593,17 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "slow"]
     async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();
-        let path = "tmp/test_bridge_service";
-        let max_dbs = 20;
-        let config = Config {
-            path: path.to_string(),
-            max_dbs,
-        };
         let bridge_service_client = Client::new();
-        let db = open_mdbx_db(config).unwrap();
-        let arc_db = Arc::new(db);
 
         let zeth_last_rollup_exit_root =
-            get_last_rollup_exit_root(1, &bridge_service_client, arc_db, 13).await?;
+            get_last_rollup_exit_root(13, &bridge_service_client).await?;
         log::info!(
             "zeth_last_rollup_exit_root: {:?}",
             zeth_last_rollup_exit_root
         );
-        tokio::time::sleep(Duration::from_secs(5)).await;
         Ok(())
     }
 }
