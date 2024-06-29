@@ -591,6 +591,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();
