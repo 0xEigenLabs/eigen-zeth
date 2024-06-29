@@ -97,6 +97,7 @@ uuid = { version = "1.2", features = ["v4", "fast-rng", "macro-diagnostics"] }
 
 # eth
 alloy-chains = { version = "0.1" }
+reqwest = "0.12.5"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"

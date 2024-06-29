@@ -10,6 +10,7 @@ pub struct GlobalEnv {
     pub curve_type: String,
     pub chain_id: u64,
     pub program_name: String,
+    pub bridge_service_addr: String,
 }
 
 /// GLOBAL_ENV is a global variable that holds the environment variables,
@@ -25,4 +26,6 @@ pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
     program_name: std::env::var("PROGRAM_NAME")
         .unwrap_or("EVM".to_string())
         .to_lowercase(),
+    bridge_service_addr: std::env::var("BRIDGE_SERVICE_ADDR")
+        .unwrap_or("http://localhost:8001".to_string()),
 });
