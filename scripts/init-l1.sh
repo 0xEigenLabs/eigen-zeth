@@ -1,0 +1,2 @@
+echo "Initializing layer1 chain with eigen-zeth/testdata/layer1/chain.json file, data directory: eigen-zeth/tmp/layer1/chain"
+reth init --datadir ../tmp/layer1/chain --chain ../testdata/layer1/chain.json
