@@ -1,2 +1,2 @@
 echo "Starting layer1 chain, log file: ../chain_layer1.log"
-RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup reth node -d --chain ../testdata/layer1/chain.json --datadir ../tmp/layer1/chain --auto-mine --http --http.port 48547 --http.api debug,eth,net,trace,web3,rpc --port 30305 --authrpc.port 8553 > ../chain_layer1.log 2>&1 &
+RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup reth node -d --chain ../testdata/layer1/chain.json --datadir ../tmp/layer1/chain --auto-mine --http --http.port 8547 --http.api debug,eth,net,trace,web3,rpc --port 30305 --authrpc.port 8553 > ../chain_layer1.log 2>&1 &
