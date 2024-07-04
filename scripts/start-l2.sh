@@ -1,3 +1,3 @@
 echo "Starting layer2 chain, log file: eigen-zeth/chain_layer2.log"
 cd ..
-PROVER_ADDR=http://localhost:50061 RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup cargo run -r -- run --database mdbx --log-level debug --chain testdata/layer2/chain.json --http --http.port 8546 --http.api debug,eth,net,trace,web3,rpc --authrpc.port 8552 --port 30304 --datadir tmp/layer2/chain --auto-mine > chain_layer2.log 2>&1 &
+PROVER_ADDR=http://localhost:50061 RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup cargo run -r -- run --database mdbx --log-level debug --chain testdata/layer2/chain.json --http --http.port 8546 --http.addr 0.0.0.0 --http.api debug,eth,net,trace,web3,rpc --authrpc.port 8552 --port 30304 --datadir tmp/layer2/chain --auto-mine > chain_layer2.log 2>&1 &
