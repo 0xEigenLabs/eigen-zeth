@@ -49,6 +49,7 @@ use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
 use thiserror::Error;
 
+use crate::commands::reth::RethCmd;
 use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
 use crate::db::Database as RollupDatabase;
@@ -60,8 +61,6 @@ use reth_blockchain_tree::{
 };
 use reth_db::mdbx::DatabaseArguments;
 use reth_interfaces::consensus::Consensus;
-use reth_node_core::args::{DevArgs, RpcServerArgs};
-use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
 use reth_node_core::primitives::U256;
 use reth_primitives::constants::eip4844::MAX_DATA_GAS_PER_BLOCK;
@@ -82,14 +81,15 @@ pub struct CustomPayloadAttributes {
     /// An inner payload type
     #[serde(flatten)]
     pub inner: EthPayloadAttributes,
-    /// A custom field
-    pub custom: u64,
+    // /// A custom field
+    // pub custom: u64,
 }
 
 /// Custom error type used in payload attributes validation
 #[derive(Debug, Error)]
 pub enum CustomError {
     #[error("Custom field is not zero")]
+    #[allow(dead_code)]
     CustomFieldIsNotZero,
 }
 
@@ -113,12 +113,12 @@ impl PayloadAttributes for CustomPayloadAttributes {
     ) -> Result<(), AttributesValidationError> {
         validate_version_specific_fields(chain_spec, version, self.into())?;
 
-        // custom validation logic - ensure that the custom field is not zero
-        if self.custom == 0 {
-            return Err(AttributesValidationError::invalid_params(
-                CustomError::CustomFieldIsNotZero,
-            ));
-        }
+        // // custom validation logic - ensure that the custom field is not zero
+        // if self.custom == 0 {
+        //     return Err(AttributesValidationError::invalid_params(
+        //         CustomError::CustomFieldIsNotZero,
+        //     ));
+        // }
 
         Ok(())
     }
@@ -403,7 +403,7 @@ where
         chain_spec,
         ..
     } = config;
-
+    tracing::info!(target: "custom_payload_builder", id=%attributes.id, parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     debug!(target: "payload_builder", id=%attributes.id, parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     let mut cumulative_gas_used = 0;
     let mut sum_blob_gas_used = 0;
@@ -668,31 +668,83 @@ pub async fn launch_custom_node(
     reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
     rollup_db: Arc<Box<dyn RollupDatabase>>,
     spec: Arc<ChainSpec>,
-    rpc_args: RpcServerArgs,
-    data_dir: MaybePlatformPath<DataDirPath>,
-    dev_args: DevArgs,
+    reth_cmd: RethCmd,
 ) -> Result<()> {
     let _guard = RethTracer::new().init().map_err(|e| anyhow!(e))?;
 
     let tasks = TaskManager::current();
 
-    let data_dir = data_dir.unwrap_or_chain_default(Default::default());
-    let db_path = data_dir.db_path();
+    // let data_dir = data_dir.unwrap_or_chain_default(Default::default());
+    // let db_path = data_dir.db_path();
+    //
+    // let db_arguments = DatabaseArguments::default();
+    //
+    // tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
+    // let database = Arc::new(
+    //     init_db(db_path.clone(), db_arguments)
+    //         .map_err(|e| anyhow!(e))?
+    //         .with_metrics(),
+    // );
 
-    let db_arguments = DatabaseArguments::default();
+    // // create node config
+    // let node_config = NodeConfig::test()
+    //     .with_rpc(rpc_args)
+    //     .with_chain(spec.clone())
+    //     .with_dev(dev_args)
+    //     .with_pruning(pruning_args)
+    //     .with_payload_builder(payload_builder_args);
+
+    let RethCmd {
+        datadir,
+        config,
+        chain,
+        metrics,
+        trusted_setup_file,
+        instance,
+        with_unused_ports,
+        network,
+        rpc,
+        txpool,
+        builder,
+        debug,
+        db,
+        dev,
+        pruning,
+    } = reth_cmd;
+
+    // set up node config
+    let mut node_config = NodeConfig {
+        config,
+        chain,
+        metrics,
+        instance,
+        trusted_setup_file,
+        network,
+        rpc,
+        txpool,
+        builder,
+        debug,
+        db,
+        dev,
+        pruning,
+    };
+
+    let data_dir = datadir.unwrap_or_chain_default(node_config.chain.chain);
+    let db_path = data_dir.db_path();
 
     tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
     let database = Arc::new(
-        init_db(db_path.clone(), db_arguments)
-            .map_err(|e| anyhow!(e))?
-            .with_metrics(),
+        init_db(
+            db_path.clone(),
+            DatabaseArguments::default().log_level(db.log_level),
+        )
+        .map_err(|e| anyhow!(e))?
+        .with_metrics(),
     );
 
-    // create node config
-    let node_config = NodeConfig::test()
-        .with_rpc(rpc_args)
-        .with_chain(spec.clone())
-        .with_dev(dev_args);
+    if with_unused_ports {
+        node_config = node_config.with_unused_ports();
+    }
 
     let factory =
         ProviderFactory::new(database.clone(), spec.clone(), data_dir.static_files_path())?;

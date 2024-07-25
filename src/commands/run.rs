@@ -1,11 +1,6 @@
 use std::fmt;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
-use tokio::select;
-use tokio::signal::unix::{signal, SignalKind};
-use tokio::sync::mpsc;
-
 use crate::commands::reth::RethCmd;
 use crate::config::env::GLOBAL_ENV;
 use crate::custom_reth;
@@ -13,22 +8,27 @@ use crate::db::lfs;
 use crate::operator::Operator;
 use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::NetworkSpec;
+use anyhow::{anyhow, Result};
+use tokio::select;
+use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::mpsc;
 
 /// The `RunCmd` struct is a command that runs the eigen-zeth.
-#[derive(clap::Args, Debug, Clone)]
+#[derive(clap::Args, Debug)]
 #[command(version, author, about, long_about)]
 pub struct RunCmd {
     #[clap(flatten)]
+    // pub reth_cmd: NodeCommand,
     pub reth_cmd: RethCmd,
     /// The log level of the node.
-    #[arg(
-        long,
-        value_name = "LOG_LEVEL",
-        verbatim_doc_comment,
-        default_value_t = LogLevel::Debug,
-        ignore_case = true,
-    )]
-    pub log_level: LogLevel,
+    // #[arg(
+    //     long,
+    //     value_name = "LOG_LEVEL",
+    //     verbatim_doc_comment,
+    //     default_value_t = LogLevel::Debug,
+    //     ignore_case = true,
+    // )]
+    // pub log_level: LogLevel,
 
     /// The settlement layer to use.
     #[arg(
@@ -145,7 +145,7 @@ impl RunCmd {
         // initialize the logger
         // std::env::set_var("RUST_LOG", self.log_level.to_string());
         env_logger::init();
-        log::info!("Initialized logger with level: {}", self.log_level);
+        // log::info!("Initialized logger with level: {}", self.log_level);
 
         // Load the settlement configuration
         let settlement_spec = match self.settlement {
@@ -235,9 +235,6 @@ impl RunCmd {
         });
 
         let chain_spec = self.reth_cmd.chain.clone();
-        let rpc_args = self.reth_cmd.rpc.clone();
-        let dev_args = self.reth_cmd.dev;
-        let data_dir = self.reth_cmd.datadir.clone();
         let reth_rollup_db = arc_rollup_db.clone();
 
         // Launch the custom reth
@@ -246,9 +243,7 @@ impl RunCmd {
             reth_started_signal_tx,
             reth_rollup_db,
             chain_spec,
-            rpc_args,
-            data_dir,
-            dev_args,
+            self.reth_cmd.clone(),
         )
         .await
     }
