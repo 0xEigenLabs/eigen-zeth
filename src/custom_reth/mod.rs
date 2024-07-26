@@ -26,7 +26,9 @@ use reth_provider::{
     BundleStateWithReceipts, CanonStateSubscriptions, StateProviderFactory,
 };
 use reth_tasks::TaskManager;
-use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction, TransactionPool};
+use reth_transaction_pool::{
+    BestTransactionsAttributes, PoolTransaction, TransactionPool, ValidPoolTransaction,
+};
 
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPoolBuilder},
@@ -427,26 +429,27 @@ where
 
     let flag = Arc::new(AtomicBool::new(false));
 
-
-    //let filget_txs = BestTransactionFilter::filter(*pool.best_transactions(), |tx| {
-    let mut best_txs_filter = best_txs.filter(|tx| {
-
+    let is_first_or_non_bridge_asset_call = |tx: Arc<
+        ValidPoolTransaction<<Pool as TransactionPool>::Transaction>,
+    >|
+     -> bool {
         tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx info: {:?}", tx);
         // load contract addr and function selector
         let contract_address = env::var("BRIDGE_CONTRACT_ADDRESS").unwrap_or("0x".to_string());
-        let bridge_asset_selector =  env::var("BRIDGE_ASSET_FUNCTION_SELECTOR").unwrap_or("0x".to_string());
+        let bridge_asset_selector =
+            env::var("BRIDGE_ASSET_FUNCTION_SELECTOR").unwrap_or("0x".to_string());
 
         // check if the transaction is a bridge asset transaction
         let mut is_bridge_asset = false;
 
-        let to = match tx.to(){
+        let to = match tx.to() {
             Some(to) => to,
-            None => return true
+            None => return true,
         };
         tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to: {:?}", to);
         if to.to_string() != contract_address {
             tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to address({:?}) is not bridge contract address", to.to_string());
-            return true
+            return true;
         }
 
         let tx_input = tx.transaction.input();
@@ -463,18 +466,12 @@ where
         }
 
         if !is_bridge_asset {
-            return true
+            return true;
         }
 
-        match flag.compare_exchange(false, true,  Ordering::Acquire, Ordering::Relaxed) {
-            Ok(_) => {
-                true
-            }
-            Err(_) => {
-                false
-            }
-        }
-    });
+        flag.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    };
 
     let mut total_fees = U256::ZERO;
 
@@ -491,7 +488,13 @@ where
     )?;
 
     let mut receipts = Vec::new();
-    while let Some(pool_tx) = best_txs_filter.next() {
+    while let Some(pool_tx) = best_txs.next() {
+        // if the transaction is not the first or non-bridge asset call, we can mark_invalid it
+        if !is_first_or_non_bridge_asset_call(pool_tx.clone()) {
+            best_txs.mark_invalid(&pool_tx);
+            continue;
+        }
+
         // ensure we still have capacity for this transaction
         if cumulative_gas_used + pool_tx.gas_limit() > block_gas_limit {
             // we can't fit this transaction into the block, so we need to mark it as invalid
