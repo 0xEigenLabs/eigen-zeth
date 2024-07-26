@@ -1,1 +1,0 @@
-lighthouse --testnet-dir testdata/el-cl-genesis-data/metadata account validator import --directory testdata/validator-keys/keys

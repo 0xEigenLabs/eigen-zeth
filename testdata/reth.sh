@@ -1,2 +1,0 @@
-cd ..
-PROVER_ADDR=http://localhost:50061 RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup cargo run -r -- run -d --database mdbx --log-level debug --chain execution/genesis.json --http --http.addr 0.0.0.0 --http.port 38546 --http.api debug,eth,net,trace,web3,rpc --authrpc.jwtsecret execution/jwtsecret --authrpc.addr 0.0.0.0 --authrpc.port 38551 --port 30304 --full --datadir tmp/reth/chain  >> testdata/zeth.log 2>&1 &

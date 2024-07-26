@@ -1,1 +1,0 @@
-nohup lighthouse vc --testnet-dir testdata/el-cl-genesis-data/metadata --validators-dir testdata/validator-keys/keys --secrets-dir testdata/validator-keys/secrets --init-slashing-protection --beacon-nodes http://localhost:35052 --suggested-fee-recipient 0x8943545177806ED17B9F23F0a21ee5948eCaa776  >> layer2_validator_client.log 2>&1 &
