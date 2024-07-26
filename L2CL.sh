@@ -1,0 +1,1 @@
+nohup lighthouse bn --execution-endpoint http://localhost:38551 --execution-jwt testdata/el-cl-genesis-data/jwt/jwtsecret --datadir tmp/cl/layer2 --http --http-address 0.0.0.0 --http-port 35052 --testnet-dir testdata/el-cl-genesis-data/metadata --subscribe-all-subnets --enable-private-discovery --disable-enr-auto-update --disable-packet-filter >> layer2_lighthouse.log 2>&1 &

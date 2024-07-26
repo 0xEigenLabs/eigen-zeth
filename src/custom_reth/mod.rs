@@ -26,7 +26,7 @@ use reth_provider::{
     BundleStateWithReceipts, CanonStateSubscriptions, StateProviderFactory,
 };
 use reth_tasks::TaskManager;
-use reth_transaction_pool::{BestTransactionsAttributes, TransactionPool};
+use reth_transaction_pool::{BestTransactionsAttributes, PoolTransaction, TransactionPool};
 
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPoolBuilder},
@@ -47,6 +47,8 @@ use reth_rpc_types::{
 use reth_tracing::{RethTracer, Tracer};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 
 use crate::commands::reth::RethCmd;
@@ -66,6 +68,7 @@ use reth_node_core::primitives::U256;
 use reth_primitives::constants::eip4844::MAX_DATA_GAS_PER_BLOCK;
 use reth_primitives::constants::BEACON_NONCE;
 use reth_primitives::eip4844::calculate_excess_blob_gas;
+use reth_primitives::hex::{FromHex, ToHex};
 use reth_primitives::revm::env::tx_env_with_recovered;
 use reth_revm::database::StateProviderDatabase;
 use reth_revm::db::states::bundle_state::BundleRetention;
@@ -422,6 +425,57 @@ where
             .map(|gasprice| gasprice as u64),
     ));
 
+    let flag = Arc::new(AtomicBool::new(false));
+
+
+    //let filget_txs = BestTransactionFilter::filter(*pool.best_transactions(), |tx| {
+    let mut best_txs_filter = best_txs.filter(|tx| {
+
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx info: {:?}", tx);
+        // load contract addr and function selector
+        let contract_address = env::var("BRIDGE_CONTRACT_ADDRESS").unwrap_or("0x".to_string());
+        let bridge_asset_selector =  env::var("BRIDGE_ASSET_FUNCTION_SELECTOR").unwrap_or("0x".to_string());
+
+        // check if the transaction is a bridge asset transaction
+        let mut is_bridge_asset = false;
+
+        let to = match tx.to(){
+            Some(to) => to,
+            None => return true
+        };
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to: {:?}", to);
+        if to.to_string() != contract_address {
+            tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to address({:?}) is not bridge contract address", to.to_string());
+            return true
+        }
+
+        let tx_input = tx.transaction.input();
+        // When calling the built-in method of eth, the input is 0x
+        let tx_input_bytes: Vec<u8> = Vec::from_hex(tx_input).expect("err msg");
+        let function_selector = &tx_input_bytes[0..4];
+        let function_selector_str: String = function_selector.encode_hex();
+        let _parameters_data = &tx_input_bytes[4..];
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx function selector: {:?}", function_selector_str);
+
+        // check if the transaction is a bridge asset transaction
+        if to.to_string() == contract_address && function_selector_str == bridge_asset_selector {
+            is_bridge_asset = true;
+        }
+
+        if !is_bridge_asset {
+            return true
+        }
+
+        match flag.compare_exchange(false, true,  Ordering::Acquire, Ordering::Relaxed) {
+            Ok(_) => {
+                true
+            }
+            Err(_) => {
+                false
+            }
+        }
+    });
+
     let mut total_fees = U256::ZERO;
 
     let block_number = initialized_block_env.number.to::<u64>();
@@ -437,7 +491,7 @@ where
     )?;
 
     let mut receipts = Vec::new();
-    while let Some(pool_tx) = best_txs.next() {
+    while let Some(pool_tx) = best_txs_filter.next() {
         // ensure we still have capacity for this transaction
         if cumulative_gas_used + pool_tx.gas_limit() > block_gas_limit {
             // we can't fit this transaction into the block, so we need to mark it as invalid

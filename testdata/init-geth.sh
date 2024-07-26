@@ -1,0 +1,1 @@
+./geth --datadir=execution init execution/genesis.json

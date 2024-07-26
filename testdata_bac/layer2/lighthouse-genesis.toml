@@ -1,0 +1,51 @@
+# Lighthouse 创世配置文件
+
+# 主网配置示例，请根据实际情况调整
+[eth2]
+# 节点类型（信标节点）
+type = "beacon"
+
+# 主网络网络ID
+network_id = "12345"
+
+# 信标链的配置信息
+[eth2.genesis]
+# 使用 Lighthouse 的 Genesis 转换的信息
+genesis = "{
+  "nonce": "0x42",
+  "timestamp": "0x0",
+  "extraData": "0x5343",
+  "gasLimit": "0x1388",
+  "difficulty": "0x400000000",
+  "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "coinbase": "0x0000000000000000000000000000000000000000",
+  "alloc": {
+    "0x540ea708597d8e46CB33BE43139452d8c9583686": {
+      "balance": "0x4a47e3c12448f4ad000000"
+    },
+    "0x6831Fb06762332dCa543C0F2b5795692d896E3D4": {
+      "balance": "0x4a47e3c12448f4ad000000"
+    }
+  },
+  "number": "0x0",
+  "gasUsed": "0x0",
+  "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+  "config": {
+    "ethash": {},
+    "chainId": 12345,
+    "homesteadBlock": 0,
+    "eip150Block": 0,
+    "eip155Block": 0,
+    "eip158Block": 0,
+    "byzantiumBlock": 0,
+    "constantinopleBlock": 0,
+    "petersburgBlock": 0,
+    "istanbulBlock": 0,
+    "berlinBlock": 0,
+    "londonBlock": 0,
+    "terminalTotalDifficulty": 0,
+    "terminalTotalDifficultyPassed": true,
+    "shanghaiTime": 0
+  }
+}"
+
