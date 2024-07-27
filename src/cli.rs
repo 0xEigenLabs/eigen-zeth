@@ -3,14 +3,14 @@ use crate::commands::{chain_info::ChainInfoCmd, config::ConfigCmd, run::RunCmd};
 use anyhow::{bail, Result};
 
 /// Cli is the root command for the CLI.
-#[derive(clap::Parser, Debug, Clone)]
+#[derive(clap::Parser, Debug)]
 #[command(version, author, about)]
 pub struct Cli {
     #[command(subcommand)]
     pub subcommand: Option<SubCommand>,
 }
 
-#[derive(clap::Subcommand, Debug, Clone)]
+#[derive(clap::Subcommand, Debug)]
 pub enum SubCommand {
     Run(RunCmd),
     ChainInfo(ChainInfoCmd),

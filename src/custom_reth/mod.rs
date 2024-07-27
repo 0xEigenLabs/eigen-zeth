@@ -26,7 +26,9 @@ use reth_provider::{
     BundleStateWithReceipts, CanonStateSubscriptions, StateProviderFactory,
 };
 use reth_tasks::TaskManager;
-use reth_transaction_pool::{BestTransactionsAttributes, TransactionPool};
+use reth_transaction_pool::{
+    BestTransactionsAttributes, PoolTransaction, TransactionPool, ValidPoolTransaction,
+};
 
 use reth_node_ethereum::{
     node::{EthereumNetworkBuilder, EthereumPoolBuilder},
@@ -47,12 +49,16 @@ use reth_rpc_types::{
 use reth_tracing::{RethTracer, Tracer};
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 
+use crate::commands::reth::RethCmd;
 use crate::custom_reth::eigen::EigenRpcExt;
 use crate::custom_reth::eigen::EigenRpcExtApiServer;
 use crate::db::Database as RollupDatabase;
 use anyhow::{anyhow, Result};
+use config::{Config, File};
 use jsonrpsee::tracing;
 use jsonrpsee::tracing::{debug, trace};
 use reth_blockchain_tree::{
@@ -60,13 +66,12 @@ use reth_blockchain_tree::{
 };
 use reth_db::mdbx::DatabaseArguments;
 use reth_interfaces::consensus::Consensus;
-use reth_node_core::args::{DevArgs, RpcServerArgs};
-use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth_node_core::node_config::NodeConfig;
 use reth_node_core::primitives::U256;
 use reth_primitives::constants::eip4844::MAX_DATA_GAS_PER_BLOCK;
 use reth_primitives::constants::BEACON_NONCE;
 use reth_primitives::eip4844::calculate_excess_blob_gas;
+use reth_primitives::hex::{FromHex, ToHex};
 use reth_primitives::revm::env::tx_env_with_recovered;
 use reth_revm::database::StateProviderDatabase;
 use reth_revm::db::states::bundle_state::BundleRetention;
@@ -82,14 +87,15 @@ pub struct CustomPayloadAttributes {
     /// An inner payload type
     #[serde(flatten)]
     pub inner: EthPayloadAttributes,
-    /// A custom field
-    pub custom: u64,
+    // /// A custom field
+    // pub custom: u64,
 }
 
 /// Custom error type used in payload attributes validation
 #[derive(Debug, Error)]
 pub enum CustomError {
     #[error("Custom field is not zero")]
+    #[allow(dead_code)]
     CustomFieldIsNotZero,
 }
 
@@ -113,12 +119,12 @@ impl PayloadAttributes for CustomPayloadAttributes {
     ) -> Result<(), AttributesValidationError> {
         validate_version_specific_fields(chain_spec, version, self.into())?;
 
-        // custom validation logic - ensure that the custom field is not zero
-        if self.custom == 0 {
-            return Err(AttributesValidationError::invalid_params(
-                CustomError::CustomFieldIsNotZero,
-            ));
-        }
+        // // custom validation logic - ensure that the custom field is not zero
+        // if self.custom == 0 {
+        //     return Err(AttributesValidationError::invalid_params(
+        //         CustomError::CustomFieldIsNotZero,
+        //     ));
+        // }
 
         Ok(())
     }
@@ -201,7 +207,47 @@ impl EngineTypes for CustomEngineTypes {
 
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-struct MyCustomNode;
+struct MyCustomNode {
+    // custom fields
+    pub tx_filter_config: TxFilterConfig,
+}
+
+impl MyCustomNode {
+    pub fn new(tx_filter_config: TxFilterConfig) -> Self {
+        Self { tx_filter_config }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct TxFilterConfig {
+    pub bridge_contract_address: String,
+    pub bridge_asset_selector: String,
+}
+
+impl TxFilterConfig {
+    pub fn new(bridge_contract_address: String, bridge_asset_selector: String) -> Self {
+        Self {
+            bridge_contract_address,
+            bridge_asset_selector,
+        }
+    }
+
+    pub fn from_conf_path(conf_path: &str) -> Result<Self> {
+        log::info!(
+            "Load the CustomNode TxFilterConfig config from: {}",
+            conf_path
+        );
+
+        let config = Config::builder()
+            .add_source(File::from(Path::new(conf_path)))
+            .build()
+            .map_err(|e| anyhow!("Failed to build config: {:?}", e))?;
+
+        config
+            .get("tx_filter_config")
+            .map_err(|e| anyhow!("Failed to parse TxFilterConfig: {:?}", e))
+    }
+}
 
 /// Configure the node types
 impl NodeTypes for MyCustomNode {
@@ -233,7 +279,8 @@ where
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(EthereumPoolBuilder::default())
-            .payload(CustomPayloadServiceBuilder::default())
+            // .payload(CustomPayloadServiceBuilder::default())
+            .payload(CustomPayloadServiceBuilder::new(self.tx_filter_config))
             .network(EthereumNetworkBuilder::default())
     }
 }
@@ -241,7 +288,16 @@ where
 /// A custom payload service builder that supports the custom engine types
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct CustomPayloadServiceBuilder;
+pub struct CustomPayloadServiceBuilder {
+    // custom fields
+    pub tx_filter_config: TxFilterConfig,
+}
+
+impl CustomPayloadServiceBuilder {
+    pub fn new(tx_filter_config: TxFilterConfig) -> Self {
+        Self { tx_filter_config }
+    }
+}
 
 impl<Node, Pool> PayloadServiceBuilder<Node, Pool> for CustomPayloadServiceBuilder
 where
@@ -253,7 +309,8 @@ where
         ctx: &BuilderContext<Node>,
         pool: Pool,
     ) -> eyre::Result<PayloadBuilderHandle<Node::Engine>> {
-        let payload_builder = CustomPayloadBuilder::default();
+        // let payload_builder = CustomPayloadBuilder::default();
+        let payload_builder = CustomPayloadBuilder::new(self.tx_filter_config);
         let conf = ctx.payload_builder_config();
 
         let payload_job_config = BasicPayloadJobGeneratorConfig::default()
@@ -284,7 +341,16 @@ where
 /// The type responsible for building custom payloads
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
-pub struct CustomPayloadBuilder;
+pub struct CustomPayloadBuilder {
+    // custom fields
+    pub tx_filter_config: TxFilterConfig,
+}
+
+impl CustomPayloadBuilder {
+    pub fn new(tx_filter_config: TxFilterConfig) -> Self {
+        Self { tx_filter_config }
+    }
+}
 
 impl<Pool, Client> PayloadBuilder<Pool, Client> for CustomPayloadBuilder
 where
@@ -336,21 +402,24 @@ where
         // })
 
         // we can customize the payload builder here, to control the block building process
-        custom_payload_builder(BuildArguments {
-            client,
-            pool,
-            cached_reads,
-            config: PayloadConfig {
-                initialized_block_env,
-                initialized_cfg,
-                parent_block,
-                extra_data,
-                attributes: attributes.0,
-                chain_spec,
+        custom_payload_builder(
+            BuildArguments {
+                client,
+                pool,
+                cached_reads,
+                config: PayloadConfig {
+                    initialized_block_env,
+                    initialized_cfg,
+                    parent_block,
+                    extra_data,
+                    attributes: attributes.0,
+                    chain_spec,
+                },
+                cancel,
+                best_payload,
             },
-            cancel,
-            best_payload,
-        })
+            self.tx_filter_config.clone(),
+        )
     }
 
     fn build_empty_payload(
@@ -374,11 +443,14 @@ where
 
 pub fn custom_payload_builder<Pool, Client>(
     args: BuildArguments<Pool, Client, EthPayloadBuilderAttributes, EthBuiltPayload>,
+    tx_filter_config: TxFilterConfig,
 ) -> std::result::Result<BuildOutcome<EthBuiltPayload>, PayloadBuilderError>
 where
     Client: StateProviderFactory,
     Pool: TransactionPool,
 {
+    tracing::info!(target: "custom_payload_builder", "TxFilterConfig {:?}", tx_filter_config);
+
     let BuildArguments {
         client,
         pool,
@@ -403,7 +475,7 @@ where
         chain_spec,
         ..
     } = config;
-
+    tracing::info!(target: "custom_payload_builder", id=%attributes.id, parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     debug!(target: "payload_builder", id=%attributes.id, parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
     let mut cumulative_gas_used = 0;
     let mut sum_blob_gas_used = 0;
@@ -422,6 +494,51 @@ where
             .map(|gasprice| gasprice as u64),
     ));
 
+    let flag = Arc::new(AtomicBool::new(false));
+
+    let is_first_or_non_bridge_asset_call = |tx: Arc<
+        ValidPoolTransaction<<Pool as TransactionPool>::Transaction>,
+    >|
+     -> bool {
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx info: {:?}", tx);
+        // load contract addr and function selector
+        let contract_address = tx_filter_config.bridge_contract_address.clone();
+        let bridge_asset_selector = tx_filter_config.bridge_asset_selector.clone();
+
+        // check if the transaction is a bridge asset transaction
+        let mut is_bridge_asset = false;
+
+        let to = match tx.to() {
+            Some(to) => to,
+            None => return true,
+        };
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to: {:?}", to);
+        if to.to_string() != contract_address {
+            tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx to address({:?}) is not bridge contract address", to.to_string());
+            return true;
+        }
+
+        let tx_input = tx.transaction.input();
+        // When calling the built-in method of eth, the input is 0x
+        let tx_input_bytes: Vec<u8> = Vec::from_hex(tx_input).expect("err msg");
+        let function_selector = &tx_input_bytes[0..4];
+        let function_selector_str: String = function_selector.encode_hex();
+        let _parameters_data = &tx_input_bytes[4..];
+        tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx function selector: {:?}", function_selector_str);
+
+        // check if the transaction is a bridge asset transaction
+        if to.to_string() == contract_address && function_selector_str == bridge_asset_selector {
+            is_bridge_asset = true;
+        }
+
+        if !is_bridge_asset {
+            return true;
+        }
+
+        flag.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
+    };
+
     let mut total_fees = U256::ZERO;
 
     let block_number = initialized_block_env.number.to::<u64>();
@@ -438,6 +555,12 @@ where
 
     let mut receipts = Vec::new();
     while let Some(pool_tx) = best_txs.next() {
+        // if the transaction is not the first or non-bridge asset call, we can mark_invalid it
+        if !is_first_or_non_bridge_asset_call(pool_tx.clone()) {
+            best_txs.mark_invalid(&pool_tx);
+            continue;
+        }
+
         // ensure we still have capacity for this transaction
         if cumulative_gas_used + pool_tx.gas_limit() > block_gas_limit {
             // we can't fit this transaction into the block, so we need to mark it as invalid
@@ -668,31 +791,84 @@ pub async fn launch_custom_node(
     reth_started_signal_channel: tokio::sync::mpsc::Sender<()>,
     rollup_db: Arc<Box<dyn RollupDatabase>>,
     spec: Arc<ChainSpec>,
-    rpc_args: RpcServerArgs,
-    data_dir: MaybePlatformPath<DataDirPath>,
-    dev_args: DevArgs,
+    reth_cmd: RethCmd,
+    tx_filter_config: TxFilterConfig,
 ) -> Result<()> {
     let _guard = RethTracer::new().init().map_err(|e| anyhow!(e))?;
 
     let tasks = TaskManager::current();
 
-    let data_dir = data_dir.unwrap_or_chain_default(Default::default());
-    let db_path = data_dir.db_path();
+    // let data_dir = data_dir.unwrap_or_chain_default(Default::default());
+    // let db_path = data_dir.db_path();
+    //
+    // let db_arguments = DatabaseArguments::default();
+    //
+    // tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
+    // let database = Arc::new(
+    //     init_db(db_path.clone(), db_arguments)
+    //         .map_err(|e| anyhow!(e))?
+    //         .with_metrics(),
+    // );
 
-    let db_arguments = DatabaseArguments::default();
+    // // create node config
+    // let node_config = NodeConfig::test()
+    //     .with_rpc(rpc_args)
+    //     .with_chain(spec.clone())
+    //     .with_dev(dev_args)
+    //     .with_pruning(pruning_args)
+    //     .with_payload_builder(payload_builder_args);
+
+    let RethCmd {
+        datadir,
+        config,
+        chain,
+        metrics,
+        trusted_setup_file,
+        instance,
+        with_unused_ports,
+        network,
+        rpc,
+        txpool,
+        builder,
+        debug,
+        db,
+        dev,
+        pruning,
+    } = reth_cmd;
+
+    // set up node config
+    let mut node_config = NodeConfig {
+        config,
+        chain,
+        metrics,
+        instance,
+        trusted_setup_file,
+        network,
+        rpc,
+        txpool,
+        builder,
+        debug,
+        db,
+        dev,
+        pruning,
+    };
+
+    let data_dir = datadir.unwrap_or_chain_default(node_config.chain.chain);
+    let db_path = data_dir.db_path();
 
     tracing::info!(target: "reth::cli", path = ?db_path, "Opening database");
     let database = Arc::new(
-        init_db(db_path.clone(), db_arguments)
-            .map_err(|e| anyhow!(e))?
-            .with_metrics(),
+        init_db(
+            db_path.clone(),
+            DatabaseArguments::default().log_level(db.log_level),
+        )
+        .map_err(|e| anyhow!(e))?
+        .with_metrics(),
     );
 
-    // create node config
-    let node_config = NodeConfig::test()
-        .with_rpc(rpc_args)
-        .with_chain(spec.clone())
-        .with_dev(dev_args);
+    if with_unused_ports {
+        node_config = node_config.with_unused_ports();
+    }
 
     let factory =
         ProviderFactory::new(database.clone(), spec.clone(), data_dir.static_files_path())?;
@@ -716,7 +892,8 @@ pub async fn launch_custom_node(
     let handle = NodeBuilder::new(node_config)
         .with_database(database)
         .with_launch_context(tasks.executor(), data_dir)
-        .node(MyCustomNode::default())
+        // .node(MyCustomNode::default())
+        .node(MyCustomNode::new(tx_filter_config))
         .extend_rpc_modules(move |ctx| {
             // create EigenRpcExt Instance
             let custom_rpc = EigenRpcExt {

@@ -1,34 +1,35 @@
 use std::fmt;
 use std::sync::Arc;
 
+use crate::commands::reth::RethCmd;
+use crate::config::env::GLOBAL_ENV;
+use crate::custom_reth;
+use crate::custom_reth::TxFilterConfig;
+use crate::db::lfs;
+use crate::operator::Operator;
+use crate::settlement::ethereum::EthereumSettlementConfig;
+use crate::settlement::NetworkSpec;
 use anyhow::{anyhow, Result};
 use tokio::select;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 
-use crate::commands::reth::RethCmd;
-use crate::config::env::GLOBAL_ENV;
-use crate::custom_reth;
-use crate::db::lfs;
-use crate::operator::Operator;
-use crate::settlement::ethereum::EthereumSettlementConfig;
-use crate::settlement::NetworkSpec;
-
 /// The `RunCmd` struct is a command that runs the eigen-zeth.
-#[derive(clap::Args, Debug, Clone)]
+#[derive(clap::Args, Debug)]
 #[command(version, author, about, long_about)]
 pub struct RunCmd {
     #[clap(flatten)]
+    // pub reth_cmd: NodeCommand,
     pub reth_cmd: RethCmd,
     /// The log level of the node.
-    #[arg(
-        long,
-        value_name = "LOG_LEVEL",
-        verbatim_doc_comment,
-        default_value_t = LogLevel::Debug,
-        ignore_case = true,
-    )]
-    pub log_level: LogLevel,
+    // #[arg(
+    //     long,
+    //     value_name = "LOG_LEVEL",
+    //     verbatim_doc_comment,
+    //     default_value_t = LogLevel::Debug,
+    //     ignore_case = true,
+    // )]
+    // pub log_level: LogLevel,
 
     /// The settlement layer to use.
     #[arg(
@@ -47,6 +48,15 @@ pub struct RunCmd {
         default_value = "configs/settlement.toml"
     )]
     pub settlement_conf: Option<String>,
+
+    /// Path to a file containing the settlement configuration.
+    #[arg(
+        long,
+        value_name = "FILE",
+        value_hint = clap::ValueHint::FilePath,
+        default_value = "configs/custom_node_config.toml"
+    )]
+    pub custom_node_conf: Option<String>,
 
     #[clap(flatten)]
     pub base_params: BaseParams,
@@ -145,7 +155,7 @@ impl RunCmd {
         // initialize the logger
         // std::env::set_var("RUST_LOG", self.log_level.to_string());
         env_logger::init();
-        log::info!("Initialized logger with level: {}", self.log_level);
+        // log::info!("Initialized logger with level: {}", self.log_level);
 
         // Load the settlement configuration
         let settlement_spec = match self.settlement {
@@ -163,6 +173,25 @@ impl RunCmd {
                     )?)
                 }
             },
+        };
+
+        let tx_filter_config = match &self.custom_node_conf {
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Custom node configuration is required for custom node"
+                ));
+            }
+            Some(custom_node_conf_path) => {
+                match TxFilterConfig::from_conf_path(custom_node_conf_path) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to load custom node configuration: {:?}",
+                            e
+                        ));
+                    }
+                }
+            }
         };
 
         // Load the database configuration
@@ -235,9 +264,6 @@ impl RunCmd {
         });
 
         let chain_spec = self.reth_cmd.chain.clone();
-        let rpc_args = self.reth_cmd.rpc.clone();
-        let dev_args = self.reth_cmd.dev;
-        let data_dir = self.reth_cmd.datadir.clone();
         let reth_rollup_db = arc_rollup_db.clone();
 
         // Launch the custom reth
@@ -246,9 +272,8 @@ impl RunCmd {
             reth_started_signal_tx,
             reth_rollup_db,
             chain_spec,
-            rpc_args,
-            data_dir,
-            dev_args,
+            self.reth_cmd.clone(),
+            tx_filter_config,
         )
         .await
     }
