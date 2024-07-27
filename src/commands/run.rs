@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::commands::reth::RethCmd;
 use crate::config::env::GLOBAL_ENV;
 use crate::custom_reth;
+use crate::custom_reth::TxFilterConfig;
 use crate::db::lfs;
 use crate::operator::Operator;
 use crate::settlement::ethereum::EthereumSettlementConfig;
@@ -47,6 +48,15 @@ pub struct RunCmd {
         default_value = "configs/settlement.toml"
     )]
     pub settlement_conf: Option<String>,
+
+    /// Path to a file containing the settlement configuration.
+    #[arg(
+        long,
+        value_name = "FILE",
+        value_hint = clap::ValueHint::FilePath,
+        default_value = "configs/custom_node_config.toml"
+    )]
+    pub custom_node_conf: Option<String>,
 
     #[clap(flatten)]
     pub base_params: BaseParams,
@@ -165,6 +175,25 @@ impl RunCmd {
             },
         };
 
+        let tx_filter_config = match &self.custom_node_conf {
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Custom node configuration is required for custom node"
+                ));
+            }
+            Some(custom_node_conf_path) => {
+                match TxFilterConfig::from_conf_path(custom_node_conf_path) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to load custom node configuration: {:?}",
+                            e
+                        ));
+                    }
+                }
+            }
+        };
+
         // Load the database configuration
         let db_config = match self.base_params.databases.database {
             Database::Memory => {
@@ -244,6 +273,7 @@ impl RunCmd {
             reth_rollup_db,
             chain_spec,
             self.reth_cmd.clone(),
+            tx_filter_config,
         )
         .await
     }
