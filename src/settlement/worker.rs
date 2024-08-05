@@ -250,7 +250,7 @@ impl Settler {
                         }
                     };
 
-                    if last_submitted_block > last_sequence_finality_block_number {
+                    if last_submitted_block >= last_sequence_finality_block_number {
                         log::info!("no new block to submit, try again later");
                         continue;
                     }
@@ -273,6 +273,42 @@ impl Settler {
 
                     let block_clone = block.clone();
                     let txs = block.transactions.clone();
+                    if txs.is_empty() {
+                        log::info!("Block({}) is an empty block, Skip proof generation for empty blocks", last_submitted_block + 1);
+                        // NOTE: For empty blocks, we need to do the following things in the specified order:
+                        // The order of these steps must not be changed.
+
+                        let execute_result = ProofResult{
+                            block_number: last_submitted_block + 1,
+                            ..Default::default()
+                        };
+
+                        // 1. update the last verified block number, trigger the next verify task
+                        db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), execute_result.block_number.to_be_bytes().to_vec());
+
+                        let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), execute_result.block_number);
+                        let status = Status::Finalized;
+                        let encoded_status = serde_json::to_vec(&status).unwrap();
+                        db.put(status_key.as_bytes().to_vec(), encoded_status);
+
+                        // 2. update the last proven block number, trigger the next verify task
+                        let key_with_prefix = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), execute_result.block_number);
+                        // save the proof to the database
+                        let encoded_execute_result = serde_json::to_vec(&execute_result).unwrap();
+                        db.put(key_with_prefix.as_bytes().to_vec(), encoded_execute_result);
+                        // save the last proven block number, trigger the next verify task
+                        db.put(keys::KEY_LAST_PROVEN_BLOCK_NUMBER.to_vec(), execute_result.block_number.to_be_bytes().to_vec());
+
+                        // 3. update the next batch number, trigger the next prove task
+                        // packing the next block
+                        db.put(keys::KEY_NEXT_BATCH.to_vec(), (last_submitted_block+1).to_be_bytes().to_vec());
+
+                        // 4. update the block status to Submitted, update the last submitted block number
+                        log::info!("submit block({}) success", last_submitted_block + 1);
+                        db.put(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(), (last_submitted_block + 1).to_be_bytes().to_vec());
+
+                        continue;
+                    }
                     let txs_clone = block.transactions;
                     let mut batches = Vec::<BatchData>::new();
                     let global_exit_root = settlement_provider.get_global_exit_root().await.map_err(|e| anyhow!("failed to get global exit root, err: {:?}", e))?;

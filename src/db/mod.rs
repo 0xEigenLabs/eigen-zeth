@@ -59,7 +59,7 @@ pub enum Status {
     Finalized,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProofResult {
     // TODO: refactor to batch
     pub block_number: u64,
