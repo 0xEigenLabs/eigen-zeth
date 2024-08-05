@@ -225,6 +225,7 @@ pub struct TxFilterConfig {
 }
 
 impl TxFilterConfig {
+    #[allow(dead_code)]
     pub fn new(bridge_contract_address: String, bridge_asset_selector: String) -> Self {
         Self {
             bridge_contract_address,
