@@ -1,6 +1,7 @@
 set -e
 
-CURRENT_PATH=$(pwd)
+#CURRENT_PATH=$(pwd)
+CURRENT_PATH=$( cd "$( dirname "$0" )" && pwd )
 PROJECT_PATH=$(dirname "${CURRENT_PATH}")
 echo "PROJECT_PATH: ${PROJECT_PATH}"
 
