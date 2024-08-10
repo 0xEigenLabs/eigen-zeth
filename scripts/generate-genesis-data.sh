@@ -20,11 +20,11 @@ OS="$(uname -s)"
 case "${OS}" in
     Linux*)
         echo "Running on Linux"
-        sed -i "s/GENESIS_TIMESTAMP=[0-9]*/GENESIS_TIMESTAMP=$current_utc_timestamp/" $file_path
+        sed -i "s/GENESIS_TIMESTAMP=[0-9]*/GENESIS_TIMESTAMP=$current_utc_timestamp/" $FILE_PATH
         ;;
     Darwin*)
         echo "Running on macOS"
-        sed -i '' "s/GENESIS_TIMESTAMP=[0-9]*/GENESIS_TIMESTAMP=$current_utc_timestamp/" $file_path
+        sed -i '' "s/GENESIS_TIMESTAMP=[0-9]*/GENESIS_TIMESTAMP=$current_utc_timestamp/" $FILE_PATH
         ;;
     *)
         echo "Unknown OS: ${OS}"
@@ -36,5 +36,5 @@ esac
 echo "Generating genesis data: ${GENESIS_PATH}"
 docker run --rm -it \
 -v ${GENESIS_PATH}:/data \
--v ${FILE_PATH}/values.env:/config/values.env \
+-v ${FILE_PATH}:/config/values.env \
 ethpandaops/ethereum-genesis-generator:3.2.1 all
