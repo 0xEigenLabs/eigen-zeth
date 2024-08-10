@@ -1,5 +1,22 @@
-cd ..
-echo $PWD
+set -e
+CURRENT_PATH=$(pwd)
+PROJECT_PATH=$(dirname "${CURRENT_PATH}")
+echo "PROJECT_PATH: ${PROJECT_PATH}"
+
+GENESIS_PATH="${PROJECT_PATH}/testdata/layer2/pos/el-cl-genesis-data/metadata/genesis.json"
+if [ ! -f "${GENESIS_PATH}" ]; then
+    echo "Genesis file not found at ${GENESIS_PATH}"
+    exit 1
+fi
+echo "GENESIS_PATH: ${GENESIS_PATH}"
+
+CHAIN_DATA_PATH_PREFIX="${PROJECT_PATH}/tmp/layer2/"
+EXECUTION_DATA_PATH="${CHAIN_DATA_PATH_PREFIX}/execution-data"
+echo "CHAIN_DATA_PATH_PREFIX: ${CHAIN_DATA_PATH_PREFIX}"
+
+CONSENSUS_DATA_PATH="${CHAIN_DATA_PATH_PREFIX}/consensus-data"
+echo "CONSENSUS_DATA_PATH: ${CONSENSUS_DATA_PATH}"
+
 # start the zeth node
 PROVER_ADDR=http://localhost:50061 RUST_LOG="debug,evm=trace,consensus::auto=trace,consensus::engine=trace,rpc::eth=trace" nohup eigen-zeth run --database mdbx --chain testdata/layer2/pos/el-cl-genesis-data/metadata/genesis.json --datadir tmp/layer2/execution-data --http --http.addr 0.0.0.0 --http.port 48546 --http.api debug,eth,net,trace,web3,rpc --authrpc.jwtsecret testdata/layer2/pos/el-cl-genesis-data/jwt/jwtsecret --authrpc.addr 0.0.0.0 --authrpc.port 48552 --port 40304 --full > tmp/zeth.log 2>&1 &
 # start the beacon node
