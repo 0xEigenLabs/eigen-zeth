@@ -1,8 +1,21 @@
-cd ../testdata/layer2/pos
-rm -rf el-cl-genesis-data
+set -e
 
-file_path="values.env"
+CURRENT_PATH=$(pwd)
+PROJECT_PATH=$(dirname "${CURRENT_PATH}")
+echo "PROJECT_PATH: ${PROJECT_PATH}"
+
+GENESIS_PATH="${PROJECT_PATH}/testdata/layer2/pos/el-cl-genesis-data"
+echo "GENESIS_PATH: ${GENESIS_PATH}"
+
+echo "Removing existing genesis data: ${GENESIS_PATH}"
+rm -rf ${GENESIS_PATH}
+
+FILE_DIR="${PROJECT_PATH}/testdata/layer2/pos"
+FILE_PATH="${FILE_DIR}/values.env"
+echo "Updating GENESIS_TIMESTAMP in ${FILE_PATH}"
+
 current_utc_timestamp=$(date -u +%s)
+echo "current_utc_timestamp: ${current_utc_timestamp}"
 OS="$(uname -s)"
 case "${OS}" in
     Linux*)
@@ -20,7 +33,8 @@ case "${OS}" in
 esac
 
 # generate genesis data
+echo "Generating genesis data: ${GENESIS_PATH}"
 docker run --rm -it \
--v $PWD/el-cl-genesis-data:/data \
--v $PWD/values.env:/config/values.env \
+-v ${GENESIS_PATH}:/data \
+-v ${FILE_PATH}/values.env:/config/values.env \
 ethpandaops/ethereum-genesis-generator:3.2.1 all
