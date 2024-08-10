@@ -71,12 +71,11 @@ use reth_node_core::primitives::U256;
 use reth_primitives::constants::eip4844::MAX_DATA_GAS_PER_BLOCK;
 use reth_primitives::constants::BEACON_NONCE;
 use reth_primitives::eip4844::calculate_excess_blob_gas;
-use reth_primitives::hex::{FromHex, ToHex};
 use reth_primitives::revm::env::tx_env_with_recovered;
 use reth_revm::database::StateProviderDatabase;
 use reth_revm::db::states::bundle_state::BundleRetention;
 use reth_revm::{revm, EvmProcessorFactory, State};
-use revm_primitives::db::DatabaseCommit;
+use revm_primitives::{db::DatabaseCommit, hex::ToHexExt};
 use revm_primitives::{EVMError, EnvWithHandlerCfg, InvalidTransaction, ResultAndState};
 
 pub(crate) mod eigen;
@@ -519,12 +518,19 @@ where
             return true;
         }
 
+        // 0x647c576c000000000000000000000000000000000000000000000000000000000000000 &[u8]
         let tx_input = tx.transaction.input();
         // When calling the built-in method of eth, the input is 0x
-        let tx_input_bytes: Vec<u8> = Vec::from_hex(tx_input).expect("err msg");
-        let function_selector = &tx_input_bytes[0..4];
-        let function_selector_str: String = function_selector.encode_hex();
-        let _parameters_data = &tx_input_bytes[4..];
+        // let tx_input_bytes: Vec<u8> = Vec::from_hex(tx_input).expect("err msg");
+        let function_selector = &tx_input[0..4];
+
+        // let function_selector_str: String = function_selector.encode_hex();
+
+        // let mut function_selector_str: String = String::new();
+        // _ = function_selector.read_to_string(&mut function_selector_str);
+        let function_selector_str = function_selector.encode_hex_with_prefix();
+
+        let _parameters_data = &tx_input[4..];
         tracing::info!(target: "consensus::auto-seal::miner::pool-tx-filter","tx function selector: {:?}", function_selector_str);
 
         // check if the transaction is a bridge asset transaction
