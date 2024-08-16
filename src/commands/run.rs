@@ -8,6 +8,7 @@ use crate::custom_reth::TxFilterConfig;
 use crate::db::lfs;
 use crate::operator::Operator;
 use crate::settlement::ethereum::EthereumSettlementConfig;
+use crate::settlement::worker::WorkerConfig;
 use crate::settlement::NetworkSpec;
 use anyhow::{anyhow, Result};
 use tokio::select;
@@ -194,6 +195,16 @@ impl RunCmd {
             }
         };
 
+        let settlement_worker_config = match &self.settlement_conf {
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Custom node configuration is required for custom node"
+                ));
+            }
+
+            Some(settlement_conf_path) => WorkerConfig::from_conf_path(settlement_conf_path)?,
+        };
+
         // Load the database configuration
         let db_config = match self.base_params.databases.database {
             Database::Memory => {
@@ -259,6 +270,7 @@ impl RunCmd {
                 a.as_str(),
                 stop_rx,
                 reth_started_signal_rx,
+                &settlement_worker_config,
             )
             .await
         });
