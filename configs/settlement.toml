@@ -19,3 +19,10 @@ chain_id = 12345
 
 [ethereum_settlement_config.zeth_config.zeth_contracts_addr]
 global_exit = "0xd0438bB2b2522D56d498F871fcf786006c180b64"
+
+# A general configuration required for the settlement worker
+[settlement_worker_config]
+# unit: second
+proof_worker_interval = 1
+verify_worker_interval = 1
+rollup_worker_interval = 1

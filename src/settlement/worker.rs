@@ -4,21 +4,43 @@ use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
 use anyhow::{anyhow, Result};
+use config::{Config, File};
 use ethers::prelude::U64;
 use ethers_core::types::{BlockId, BlockNumber, Transaction};
 use ethers_providers::{Http, Middleware, Provider};
 use prost::bytes;
 use reqwest::Client;
 use reth_primitives::{Bytes, TransactionKind, TxLegacy};
+use serde::Deserialize;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-const PROOF_INTERVAL: Duration = Duration::from_secs(30);
-const VERIFY_INTERVAL: Duration = Duration::from_secs(30);
-const SUBMIT_INTERVAL: Duration = Duration::from_secs(30);
-
 pub(crate) struct Settler {}
+
+/// A general configuration that needs to be included in the configuration structure of each implementation.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkerConfig {
+    pub proof_worker_interval: u64,
+    pub verify_worker_interval: u64,
+    pub rollup_worker_interval: u64,
+}
+
+impl WorkerConfig {
+    pub fn from_conf_path(conf_path: &str) -> Result<Self> {
+        log::info!("Load the settlement worker config from: {}", conf_path);
+
+        let config = Config::builder()
+            .add_source(File::from(Path::new(conf_path)))
+            .build()
+            .map_err(|e| anyhow!("Failed to build config: {:?}", e))?;
+
+        config
+            .get("settlement_worker_config")
+            .map_err(|e| anyhow!("Failed to parse WorkerConfig: {:?}", e))
+    }
+}
 
 // TODO: Use channels, streams, and other methods to flow data between workers,
 // and use event driven replacement of rotation databases to drive Zeth to run,
@@ -29,8 +51,9 @@ impl Settler {
         db: Arc<Box<dyn Database>>,
         mut prover: ProverChannel,
         mut stop_rx: mpsc::Receiver<()>,
+        worker_interval: Duration,
     ) -> Result<()> {
-        let mut ticker = tokio::time::interval(PROOF_INTERVAL);
+        let mut ticker = tokio::time::interval(worker_interval);
         prover.start().await.unwrap();
 
         log::info!("Prove Worker started");
@@ -141,8 +164,9 @@ impl Settler {
         db: Arc<Box<dyn Database>>,
         settlement_provider: Arc<Box<dyn Settlement>>,
         mut stop_rx: mpsc::Receiver<()>,
+        worker_interval: Duration,
     ) -> Result<()> {
-        let mut ticker = tokio::time::interval(VERIFY_INTERVAL);
+        let mut ticker = tokio::time::interval(worker_interval);
         let bridge_service_client = Client::new();
         log::info!("Verify Worker started");
         loop {
@@ -222,8 +246,9 @@ impl Settler {
         l2provider: Provider<Http>,
         settlement_provider: Arc<Box<dyn Settlement>>,
         mut stop_rx: mpsc::Receiver<()>,
+        worker_interval: Duration,
     ) -> Result<()> {
-        let mut ticker = tokio::time::interval(SUBMIT_INTERVAL);
+        let mut ticker = tokio::time::interval(worker_interval);
         log::info!("Submit Worker started");
         loop {
             tokio::select! {
@@ -531,7 +556,16 @@ mod tests {
 
         let (tx, rx) = mpsc::channel(1);
         let stop_rx = rx;
-        let submit_worker = Settler::rollup(arc_db, l2provider, arc_settlement_provider, stop_rx);
+
+        let conf_path = "configs/settlement.toml";
+        let config = WorkerConfig::from_conf_path(conf_path).unwrap();
+        let submit_worker = Settler::rollup(
+            arc_db,
+            l2provider,
+            arc_settlement_provider,
+            stop_rx,
+            Duration::from_secs(config.rollup_worker_interval),
+        );
 
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -608,7 +642,15 @@ mod tests {
 
         let (tx, rx) = mpsc::channel(1);
         let stop_rx: mpsc::Receiver<()> = rx;
-        let verify_worker = Settler::verify_worker(arc_db, arc_settlement_provider, stop_rx);
+
+        let conf_path = "configs/settlement.toml";
+        let config = WorkerConfig::from_conf_path(conf_path).unwrap();
+        let verify_worker = Settler::verify_worker(
+            arc_db,
+            arc_settlement_provider,
+            stop_rx,
+            Duration::from_secs(config.rollup_worker_interval),
+        );
 
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(5)).await;
@@ -639,5 +681,12 @@ mod tests {
             zeth_last_rollup_exit_root
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_from_conf_path() {
+        let conf_path = "configs/settlement.toml";
+        let config = WorkerConfig::from_conf_path(conf_path).unwrap();
+        println!("{:#?}", config);
     }
 }

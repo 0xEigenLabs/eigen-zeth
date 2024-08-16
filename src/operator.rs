@@ -10,14 +10,16 @@ use ethers_providers::{Http, Provider};
 // use serde::Serialize;
 use crate::db::Database;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 
-use crate::settlement::worker::Settler;
+use crate::settlement::worker::{Settler, WorkerConfig};
 
 pub(crate) struct Operator;
 
 impl Operator {
+    #[allow(clippy::too_many_arguments)]
     pub async fn run(
         l2addr: &str,
         prover_addr: &str,
@@ -26,6 +28,7 @@ impl Operator {
         aggregator_addr: &str,
         mut stop_rx: Receiver<()>,
         mut reth_started_signal_rx: Receiver<()>,
+        general_config: &WorkerConfig,
     ) -> Result<()> {
         // initialize all components of the eigen-zeth full node
         // initialize the prover
@@ -59,11 +62,13 @@ impl Operator {
         let arc_db_for_verify_worker = rollup_db.clone();
         let settlement_provider_for_verify_worker = arc_settlement_provider.clone();
         let (verify_stop_tx, verify_stop_rx) = mpsc::channel::<()>(1);
+        let verify_interval = Duration::from_secs(general_config.verify_worker_interval);
         tokio::spawn(async move {
             Settler::verify_worker(
                 arc_db_for_verify_worker,
                 settlement_provider_for_verify_worker,
                 verify_stop_rx,
+                verify_interval,
             )
             .await
         });
@@ -71,20 +76,29 @@ impl Operator {
         // start the proof worker
         let arc_db_for_proof_worker = rollup_db.clone();
         let (proof_stop_tx, proof_stop_rx) = mpsc::channel::<()>(1);
+        let proof_interval = Duration::from_secs(general_config.proof_worker_interval);
         tokio::spawn(async move {
-            Settler::proof_worker(arc_db_for_proof_worker, prover, proof_stop_rx).await
+            Settler::proof_worker(
+                arc_db_for_proof_worker,
+                prover,
+                proof_stop_rx,
+                proof_interval,
+            )
+            .await
         });
 
         let arc_db_for_submit_worker = rollup_db.clone();
         let settlement_provider_for_submit_worker = arc_settlement_provider.clone();
         let l2provider_for_submit_worker = l2provider.clone();
         let (submit_stop_tx, submit_stop_rx) = mpsc::channel::<()>(1);
+        let rollup_interval = Duration::from_secs(general_config.rollup_worker_interval);
         tokio::spawn(async move {
             Settler::rollup(
                 arc_db_for_submit_worker,
                 l2provider_for_submit_worker,
                 settlement_provider_for_submit_worker,
                 submit_stop_rx,
+                rollup_interval,
             )
             .await
         });
