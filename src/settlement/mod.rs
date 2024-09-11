@@ -9,9 +9,11 @@ use async_trait::async_trait;
 use ethers_core::types::{Address, Bytes, U256};
 
 pub(crate) mod ethereum;
+pub(crate) mod http;
 pub(crate) mod worker;
+use serde::Serialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub(crate) struct BatchData {
     pub transactions: Vec<u8>,
     pub global_exit_root: [u8; 32],
