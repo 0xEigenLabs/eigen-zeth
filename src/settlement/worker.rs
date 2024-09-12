@@ -1,6 +1,7 @@
 use crate::config::env::GLOBAL_ENV;
 use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
+use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
 use anyhow::{anyhow, Result};
@@ -206,7 +207,7 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()) {
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-                        let zeth_last_rollup_exit_root = get_last_rollup_exit_root(proof_data.block_number, &bridge_service_client).await?;
+                        let zeth_last_rollup_exit_root = get_rollup_exit_root_by_block(proof_data.block_number, &bridge_service_client).await?;
 
                         match settlement_provider.verify_batches(
                             0,
@@ -469,7 +470,7 @@ pub fn encode_eip155_fields(tx: &TxLegacy, out: &mut dyn bytes::BufMut) {
     }
 }
 
-pub async fn get_last_rollup_exit_root(
+pub async fn get_rollup_exit_root_by_block(
     block_number: u64,
     bridge_service_client: &Client,
 ) -> Result<[u8; 32]> {
@@ -512,7 +513,6 @@ pub async fn get_last_rollup_exit_root(
 mod tests {
     use super::*;
     use crate::db::lfs::libmdbx::{open_mdbx_db, Config};
-    use crate::settlement::ethereum::EthereumSettlementConfig;
     use crate::settlement::{init_settlement_provider, NetworkSpec};
     use std::{env, fs};
 
@@ -675,7 +675,7 @@ mod tests {
         let bridge_service_client = Client::new();
 
         let zeth_last_rollup_exit_root =
-            get_last_rollup_exit_root(13, &bridge_service_client).await?;
+            get_rollup_exit_root_by_block(13, &bridge_service_client).await?;
         log::info!(
             "zeth_last_rollup_exit_root: {:?}",
             zeth_last_rollup_exit_root

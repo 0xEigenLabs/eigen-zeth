@@ -283,9 +283,9 @@ impl Settlement for EthereumSettlement {
             .await
     }
 
-    async fn update_global_exit_root(&self, new_root: [u8; 32]) -> Result<()> {
+    async fn update_exit_root(&self, network: u32, new_root: [u8; 32]) -> Result<()> {
         self.global_exit_root_client
-            .update_exit_root(new_root)
+            .update_exit_root(network, new_root)
             .await
     }
 
@@ -435,7 +435,7 @@ impl Settlement for EthereumSettlement {
             .await
     }
 
-    async fn get_zeth_last_rollup_exit_root(&self) -> Result<[u8; 32]> {
+    async fn get_last_rollup_exit_root(&self) -> Result<[u8; 32]> {
         self.zeth_global_exit_root_client
             .last_rollup_exit_root()
             .await

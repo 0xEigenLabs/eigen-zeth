@@ -8,8 +8,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use ethers_core::types::{Address, Bytes, U256};
 
+pub(crate) mod custom;
 pub(crate) mod ethereum;
-pub(crate) mod http;
 pub(crate) mod worker;
 use serde::Serialize;
 
@@ -74,7 +74,9 @@ pub trait Settlement: Send + Sync {
 
     // global_exit_root
 
-    async fn update_global_exit_root(&self, new_root: [u8; 32]) -> Result<()>;
+    // async fn update_global_exit_root(&self, new_root: [u8; 32]) -> Result<()>;
+
+    async fn update_exit_root(&self, network: u32, new_root: [u8; 32]) -> Result<()>;
 
     async fn get_global_exit_root(&self) -> Result<[u8; 32]>;
 
@@ -103,7 +105,7 @@ pub trait Settlement: Send + Sync {
         _input: String,
     ) -> Result<()>;
 
-    async fn get_zeth_last_rollup_exit_root(&self) -> Result<[u8; 32]>;
+    async fn get_last_rollup_exit_root(&self) -> Result<[u8; 32]>;
 
     // TODO: add more interfaces
 }
@@ -112,12 +114,14 @@ pub trait Settlement: Send + Sync {
 #[derive(Clone, Debug)]
 pub enum NetworkSpec {
     Ethereum(ethereum::EthereumSettlementConfig),
+    Custom(custom::CustomSettlementConfig),
     Optimism,
 }
 
 pub fn init_settlement_provider(spec: NetworkSpec) -> Result<Box<dyn Settlement>> {
     match spec {
         NetworkSpec::Ethereum(config) => Ok(Box::new(ethereum::EthereumSettlement::new(config)?)),
+        NetworkSpec::Custom(config) => Ok(Box::new(custom::CustomSettlement::new(config)?)),
         _ => todo!("Not supported network"),
     }
 }
