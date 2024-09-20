@@ -23,6 +23,8 @@ pub struct CustomClient {
     pub url: String,
 }
 
+const SUCCESS_STATUS: u64 = 1;
+
 impl CustomClient {
     pub fn new(url: String) -> Self {
         let client = Client::new();
@@ -93,7 +95,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -129,7 +148,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -177,7 +213,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -225,7 +278,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -253,7 +323,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -266,9 +353,22 @@ impl CustomClient {
     }
 
     pub async fn sequence_batches(&self, batches: Vec<BatchData>) -> Result<()> {
+        let batches: Vec<_> = batches
+            .into_iter()
+            .map(|batch| {
+                json!({
+                    "transactions": format!("0x{}", hex::encode(batch.transactions)),
+                    "global_exit_root": format!("0x{}", hex::encode(batch.global_exit_root)),
+                    "timestamp": batch.timestamp
+                })
+            })
+            .collect();
+
         let body = json!({
             "batches": batches
         });
+
+        println!("body: {:?}", body);
 
         let response = self
             .client
@@ -280,7 +380,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -322,7 +439,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -367,7 +501,24 @@ impl CustomClient {
         match response {
             Ok(resp) => {
                 if resp.status().is_success() {
-                    Ok(())
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(parsed_resp) => {
+                            if let Some(status) = parsed_resp.get("status").and_then(|s| s.as_u64())
+                            {
+                                if status == SUCCESS_STATUS {
+                                    Ok(())
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "Contract call failed with status: {}",
+                                        status
+                                    ))
+                                }
+                            } else {
+                                Err(anyhow::anyhow!("Response missing 'status' field"))
+                            }
+                        }
+                        Err(e) => Err(anyhow::anyhow!("Failed to parse response: {:?}", e)),
+                    }
                 } else {
                     Err(anyhow::anyhow!(
                         "Request failed with status: {}",
@@ -519,8 +670,8 @@ mod tests {
         ).await;
         println!("res: {:?}", res);
     }
-    #[tokio::test]
 
+    #[tokio::test]
     async fn test_update_exit_root() {
         let settlement_provider = setup().unwrap();
         // only bridgeAddress or rollupAddress can call

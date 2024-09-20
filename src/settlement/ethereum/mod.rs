@@ -345,7 +345,7 @@ impl Settlement for EthereumSettlement {
         proof: String,
         input: String,
     ) -> Result<()> {
-        let p = parse_proof(&proof).map_err(|e| {
+        let p: Proof = parse_proof(&proof).map_err(|e| {
             anyhow!(
                 "Failed to parse proof from json string: {:?}, err: {:?}",
                 proof,
