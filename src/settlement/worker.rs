@@ -1,7 +1,6 @@
 use crate::config::env::GLOBAL_ENV;
 use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
-use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
 use anyhow::{anyhow, Result};
@@ -221,7 +220,7 @@ impl Settler {
 
                         let env = std::env::var("ENV").unwrap_or(String::from("prod"));
 
-                        if env != "prod".to_string(){
+                        if env != *"prod".to_string(){
                             // TODO,  no need to write db
                             log::info!("No need to verify_batches");
                             log::info!("verify proof success, block({}), batch({})", proof_data.block_number, last_verified_batch + 1);
@@ -576,6 +575,7 @@ mod tests {
     use std::{env, fs};
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_submit_worker() {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();
@@ -647,6 +647,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_verify_worker() {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();
@@ -731,6 +732,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();

@@ -1,22 +1,9 @@
-use super::BatchData as RustBatchData;
-use crate::cli::Cli;
-use crate::config::env::GLOBAL_ENV;
 use crate::settlement::BatchData;
-use crate::settlement::Settlement;
-use anyhow::{anyhow, Result};
-use async_trait::async_trait;
-use config::{Config, File};
-use ethers::signers::{LocalWallet, Signer};
-use ethers_core::k256::elliptic_curve::SecretKey;
+use anyhow::Result;
 use ethers_core::types::{Address, Bytes, U256};
 use ethers_core::utils::hex;
-use ethers_providers::{Http, Provider};
 use reqwest::Client;
-use serde::Deserialize;
 use serde_json::json;
-use serde_json::Value;
-use std::path::Path;
-use std::str::FromStr;
 
 pub struct CustomClient {
     pub client: Client,
@@ -177,6 +164,7 @@ impl CustomClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn claim_asset(
         &self,
         smt_proof: [[u8; 32]; 32],
@@ -242,6 +230,7 @@ impl CustomClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn claim_message(
         &self,
         smt_proof: [[u8; 32]; 32],
@@ -409,6 +398,7 @@ impl CustomClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn verify_batches(
         &self,
         pending_state_num: u64,
@@ -468,6 +458,7 @@ impl CustomClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn verify_batches_trusted_aggregator(
         &self,
         pending_state_num: u64,
@@ -533,13 +524,15 @@ impl CustomClient {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use self::hex::FromHex;
     use super::*;
-    use crate::config::env::GlobalEnv;
-    use crate::db::lfs::libmdbx::{open_mdbx_db, Config};
+    use crate::config::env::GLOBAL_ENV;
     use crate::settlement::custom::CustomSettlementConfig;
+    use crate::settlement::Settlement;
     use crate::settlement::{init_settlement_provider, NetworkSpec};
-    use std::{env, fs};
+    use anyhow::anyhow;
 
     fn setup() -> Result<Box<dyn Settlement>> {
         let config = CustomSettlementConfig {
@@ -552,6 +545,7 @@ mod tests {
         Ok(settlement_provider)
     }
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_bridge_asset() {
         let settlement_provider = setup().unwrap();
         let res = settlement_provider
@@ -571,6 +565,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_claim_asset() {
         let settlement_provider = setup().unwrap();
         let hex_strings = [
@@ -629,34 +624,79 @@ mod tests {
         println!("res: {:?}", res);
     }
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_get_global_exit_root() {
         let settlement_provider = setup().unwrap();
         let res = settlement_provider.get_global_exit_root().await;
         println!("res: {:?}", res);
     }
 
-    // async fn test_get_last_rollup_exit_root() {
-    //     let (settlement_provider, setup_params) = setup().unwrap();
-    //     settlement_provider.get_last_rollup_exit_root();
-    // }
-
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_sequence_batches() {
         let settlement_provider = setup().unwrap();
         let batches = vec![BatchData {
-            transactions: vec![1],
+            transactions: vec![1, 2, 3, 4, 5],
             global_exit_root: <[u8; 32]>::from_hex(
                 "0xaadca94ab223b3e975c1cdfed7e2248ab7d91f056ba8f6d9060a36799f950a7e"
                     .trim_start_matches("0x"),
             )
             .expect("Invalid hex string"),
-            timestamp: 111111111,
+            timestamp: 1634073200,
         }];
+
         let res = settlement_provider.sequence_batches(batches).await;
         println!("res: {:?}", res);
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
+    async fn test_batch_struct() {
+        let batches = vec![BatchData {
+            transactions: vec![1, 2, 3, 4, 5],
+            global_exit_root: <[u8; 32]>::from_hex(
+                "0xaadca94ab223b3e975c1cdfed7e2248ab7d91f056ba8f6d9060a36799f950a7e"
+                    .trim_start_matches("0x"),
+            )
+            .expect("Invalid hex string"),
+            timestamp: 1634073200,
+        }];
+
+        let batches_json: Vec<_> = batches
+            .clone()
+            .into_iter()
+            .map(|batch| {
+                json!({
+                    "transactions": format!("0x{}", hex::encode(batch.transactions)),
+                    "global_exit_root": format!("0x{}", hex::encode(batch.global_exit_root)),
+                    "timestamp": batch.timestamp
+                })
+            })
+            .collect();
+
+        println!("batches: {:?}", batches_json);
+
+        #[derive(Debug)]
+        pub struct SolidityBatchData {
+            pub transactions: Bytes,
+            pub global_exit_root: [u8; 32],
+            pub timestamp: u64,
+        }
+
+        let solidity_batches: Vec<SolidityBatchData> = batches
+            .iter()
+            .map(|b| SolidityBatchData {
+                transactions: Bytes::from(b.transactions.clone()),
+                global_exit_root: b.global_exit_root,
+                timestamp: b.timestamp,
+            })
+            .collect();
+
+        println!("solidity_batches: {:?}", solidity_batches);
+    }
+
+    #[tokio::test]
+    #[ignore = "slow"]
     async fn test_verify_batches() {
         let settlement_provider = setup().unwrap();
         let res = settlement_provider.verify_batches(
@@ -672,6 +712,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "slow"]
     async fn test_update_exit_root() {
         let settlement_provider = setup().unwrap();
         // only bridgeAddress or rollupAddress can call

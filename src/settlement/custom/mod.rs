@@ -1,21 +1,10 @@
 use super::BatchData as RustBatchData;
-use crate::config::env::GLOBAL_ENV;
-use crate::settlement::BatchData;
 use crate::settlement::Settlement;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use async_trait::async_trait;
-use config::{Config, File};
-use ethers::signers::{LocalWallet, Signer};
-use ethers_core::k256::elliptic_curve::SecretKey;
 use ethers_core::types::{Address, Bytes, U256};
-use ethers_core::utils::hex;
-use ethers_providers::{Http, Provider};
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::json;
-use serde_json::Value;
-use std::path::Path;
-use std::str::FromStr;
 pub mod methods;
 use crate::settlement::custom::methods::*;
 
