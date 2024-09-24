@@ -41,7 +41,7 @@ ZETH_LOG_FILE="${PROJECT_PATH}/tmp/zeth.log"
 BEACON_LOG_FILE="${PROJECT_PATH}/tmp/beacon.log"
 VALIDATOR_LOG_FILE="${PROJECT_PATH}/tmp/validator.log"
 
-DEFAULT_SETTLEMENT="ethereum" # default settlement layer
+DEFAULT_SETTLEMENT="custom" # default settlement layer
 DEFAULT_SETTLEMENT_CONFIG_FILE="${PROJECT_PATH}/configs/settlement.toml"
 DEFAULT_CUSTOM_NODE_CONFIG_FILE="${PROJECT_PATH}/configs/custom_node_config.toml"
 DEFAULT_DATABASE_CONFIG_FILE="${PROJECT_PATH}/configs/database.toml"
