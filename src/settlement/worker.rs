@@ -98,8 +98,8 @@ impl Settler {
         worker_interval: Duration,
     ) -> Result<()> {
         let mut ticker = tokio::time::interval(worker_interval);
-        let gen_proof = GLOBAL_ENV.gen_proof;
-        if gen_proof {
+        let debug_proof = GLOBAL_ENV.debug_proof;
+        if !debug_proof {
             prover.start().await.unwrap();
         }
 
@@ -137,7 +137,7 @@ impl Settler {
                         continue;
                     }
 
-                    if !gen_proof{
+                    if debug_proof{
                         gen_proof_without_prover(db.clone(), next_batch, last_submitted_block);
                         continue;
                     }
@@ -588,7 +588,7 @@ mod tests {
     #[ignore = "slow"]
     async fn test_proof_worker() {
         env::set_var("RUST_LOG", "debug");
-        env::set_var("GEN_PROOF", "FALSE");
+        env::set_var("DEBUG_PROOF", "FALSE");
         env_logger::init();
         let path = "tmp/test_proof_worker";
         let max_dbs = 20;
