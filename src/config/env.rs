@@ -30,6 +30,6 @@ pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
     bridge_service_addr: std::env::var("BRIDGE_SERVICE_ADDR")
         .unwrap_or("http://localhost:8001".to_string()),
     debug_proof: std::env::var("DEBUG_PROOF")
-        .unwrap_or_else(|_| String::from("TRUE"))
-        .eq_ignore_ascii_case("TRUE"),
+        .unwrap_or_else(|_| String::from("FALSE"))
+        .eq_ignore_ascii_case("FALSE"),
 });

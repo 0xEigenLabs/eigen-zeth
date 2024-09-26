@@ -53,13 +53,18 @@ pub fn gen_proof_without_prover(
 ) {
     let mut batch = next_batch;
     while batch <= last_submitted_block {
-        let proof: String = std::fs::read_to_string("proof/proof.json").unwrap_or_default();
-        let public_input: String =
-            std::fs::read_to_string("proof/public_input.json").unwrap_or_default();
+        let proof_path = format!("{}/proof/proof.json", env!("CARGO_MANIFEST_DIR"));
+        let public_input_path = format!("{}/proof/public_input.json", env!("CARGO_MANIFEST_DIR"));
+        let proof: String = std::fs::read_to_string(proof_path).unwrap_or_default();
+        let public_input: String = std::fs::read_to_string(public_input_path).unwrap_or_default();
+
+        let mut default_bytes: [u8; 32] = Default::default();
+        default_bytes[24..].copy_from_slice(&(batch).to_le_bytes());
         let execute_result = ProofResult {
             block_number: batch,
             proof,
             public_input,
+            post_state_root: default_bytes,
             ..Default::default()
         };
         log::info!("execute batch {} success: {:?}", batch, execute_result);
@@ -341,7 +346,17 @@ impl Settler {
                         }
                     };
 
-                    if last_submitted_block >= last_sequence_finality_block_number {
+                    let last_verified_block = match db.get(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER) {
+                        None => {
+                            db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
+                            0
+                        }
+                        Some(block_number_bytes) => {
+                            u64::from_be_bytes(block_number_bytes.try_into().unwrap())
+                        }
+                    };
+
+                    if last_submitted_block >= last_sequence_finality_block_number || last_verified_block < last_submitted_block{
                         log::info!("no new block to submit, try again later");
                         continue;
                     }
@@ -375,6 +390,7 @@ impl Settler {
                         };
 
                         // 1. update the last verified block number, trigger the next verify task
+
                         db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), execute_result.block_number.to_be_bytes().to_vec());
 
                         let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), execute_result.block_number);
@@ -588,7 +604,7 @@ mod tests {
     #[ignore = "slow"]
     async fn test_proof_worker() {
         env::set_var("RUST_LOG", "debug");
-        env::set_var("DEBUG_PROOF", "FALSE");
+        env::set_var("DEBUG_PROOF", "TRUE");
         env_logger::init();
         let path = "tmp/test_proof_worker";
         let max_dbs = 20;
@@ -602,7 +618,7 @@ mod tests {
 
         arc_db.put(
             keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(),
-            3_u64.to_be_bytes().to_vec(),
+            1_u64.to_be_bytes().to_vec(),
         );
         arc_db.put(keys::KEY_NEXT_BATCH.to_vec(), 0_u64.to_be_bytes().to_vec());
 
