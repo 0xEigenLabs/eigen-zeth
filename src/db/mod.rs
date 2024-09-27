@@ -37,6 +37,7 @@ pub(crate) mod keys {
     pub const KEY_LAST_PROVEN_BLOCK_NUMBER: &[u8] = b"LAST_PROVEN_BLOCK_NUMBER";
     pub const KEY_LAST_VERIFIED_BLOCK_NUMBER: &[u8] = b"LAST_VERIFIED_BLOCK_NUMBER";
     pub const KEY_PROVE_STEP_RECORD: &[u8] = b"PROVE_STEP_RECORD";
+    pub const KEY_LAST_VERIFIED_BATCH_NUMBER: &[u8] = b"LAST_VERIFIED_BATCH_NUMBER";
 }
 
 pub(crate) mod prefix {

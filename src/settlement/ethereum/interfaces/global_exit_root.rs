@@ -26,7 +26,11 @@ impl GlobalExitRootContractClient {
         GlobalExitRootContractClient { contract }
     }
 
-    pub async fn update_exit_root(&self, new_rollup_exit_root: [u8; 32]) -> Result<()> {
+    pub async fn update_exit_root(
+        &self,
+        _network: u32,
+        new_rollup_exit_root: [u8; 32],
+    ) -> Result<()> {
         self
             .contract
             .update_exit_root(new_rollup_exit_root)
