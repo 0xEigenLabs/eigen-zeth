@@ -50,9 +50,8 @@ pub struct ProverChannel {
 
     //
     // request_sender2: tokio::sync::broadcast::Sender<ProverRequest>,
-    /// final proof
+    // /// final proof
     // final_proof_sender: Sender<Vec<u8>>,
-
     /// used to stop the endpoint
     stop_endpoint_tx: Sender<()>,
     /// the address of the aggregator

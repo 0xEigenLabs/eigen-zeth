@@ -419,8 +419,8 @@ impl CustomClient {
             "input": input
         });
 
-        log::debug!("sequence_batches body: {:?}", body);
-        
+        log::debug!("verify_batches body: {:?}", body);
+
         let response = self
             .client
             .post(format!("{}/verify-batches", self.url.clone()))
