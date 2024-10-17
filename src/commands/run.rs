@@ -23,7 +23,7 @@ pub struct RunCmd {
     #[clap(flatten)]
     // pub reth_cmd: NodeCommand,
     pub reth_cmd: RethCmd,
-    /// The log level of the node.
+    // /// The log level of the node.
     // #[arg(
     //     long,
     //     value_name = "LOG_LEVEL",
@@ -32,7 +32,6 @@ pub struct RunCmd {
     //     ignore_case = true,
     // )]
     // pub log_level: LogLevel,
-
     /// The settlement layer to use.
     #[arg(
         long,

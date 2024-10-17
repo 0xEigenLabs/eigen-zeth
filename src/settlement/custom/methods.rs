@@ -357,7 +357,7 @@ impl CustomClient {
             "batches": batches
         });
 
-        println!("body: {:?}", body);
+        log::debug!("sequence_batches body: {:?}", body);
 
         let response = self
             .client
@@ -418,6 +418,8 @@ impl CustomClient {
             "proof": proof,
             "input": input
         });
+
+        log::debug!("verify_batches body: {:?}", body);
 
         let response = self
             .client
