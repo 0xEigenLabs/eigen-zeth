@@ -357,7 +357,7 @@ impl CustomClient {
             "batches": batches
         });
 
-        println!("body: {:?}", body);
+        log::debug!("sequence_batches body: {:?}", body);
 
         let response = self
             .client
@@ -419,6 +419,8 @@ impl CustomClient {
             "input": input
         });
 
+        log::debug!("sequence_batches body: {:?}", body);
+        
         let response = self
             .client
             .post(format!("{}/verify-batches", self.url.clone()))
