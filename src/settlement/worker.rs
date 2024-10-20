@@ -281,6 +281,7 @@ impl Settler {
 
                         match settlement_provider.verify_batches(
                             0,
+                            last_verified_block,
                             last_verified_batch,
                             last_verified_batch + 1,
                             zeth_last_rollup_exit_root,

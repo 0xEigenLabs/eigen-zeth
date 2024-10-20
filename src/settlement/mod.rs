@@ -86,6 +86,7 @@ pub trait Settlement: Send + Sync {
     async fn verify_batches(
         &self,
         pending_state_num: u64,
+        cur_block_num: u64,
         init_num_batch: u64,
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],

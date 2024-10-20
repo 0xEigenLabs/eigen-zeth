@@ -402,6 +402,7 @@ impl CustomClient {
     pub async fn verify_batches(
         &self,
         pending_state_num: u64,
+        cur_block_num: u64,
         init_num_batch: u64,
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],
@@ -411,6 +412,7 @@ impl CustomClient {
     ) -> Result<()> {
         let body = json!({
             "pending_state_num": pending_state_num,
+            "cur_block_num": cur_block_num,
             "init_num_batch": init_num_batch,
             "final_new_batch": final_new_batch,
             "new_local_exit_root": format!("0x{}", hex::encode(new_local_exit_root)),
@@ -702,6 +704,7 @@ mod tests {
     async fn test_verify_batches() {
         let settlement_provider = setup().unwrap();
         let res = settlement_provider.verify_batches(
+            0,
             0,
             0,
             1,

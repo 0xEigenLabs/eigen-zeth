@@ -150,6 +150,7 @@ impl Settlement for CustomSettlement {
     async fn verify_batches(
         &self,
         pending_state_num: u64,
+        cur_block_num: u64,
         init_num_batch: u64,
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],
@@ -160,6 +161,7 @@ impl Settlement for CustomSettlement {
         self.bridge_service_client
             .verify_batches(
                 pending_state_num,
+                cur_block_num,
                 init_num_batch,
                 final_new_batch,
                 new_local_exit_root,

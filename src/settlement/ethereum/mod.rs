@@ -338,6 +338,7 @@ impl Settlement for EthereumSettlement {
     async fn verify_batches(
         &self,
         pending_state_num: u64,
+        cur_block_num: u64,
         init_num_batch: u64,
         final_new_batch: u64,
         new_local_exit_root: [u8; 32],
@@ -365,6 +366,7 @@ impl Settlement for EthereumSettlement {
         log::info!(
             "verify batches param:\n\
             Pending state num: {}\n\
+            Current block num: {}\n\
             Init batch num: {}\n\
             Final batch num: {}\n\
             New local exit root: {:?}\n\
@@ -372,6 +374,7 @@ impl Settlement for EthereumSettlement {
             Proof: {:#?}\n\
             Input: {:#?}\n",
             pending_state_num,
+            cur_block_num,
             init_num_batch,
             final_new_batch,
             new_local_exit_root,
@@ -383,6 +386,7 @@ impl Settlement for EthereumSettlement {
         self.zkvm_contract_client
             .verify_batches(
                 pending_state_num,
+                cur_block_num,
                 init_num_batch,
                 final_new_batch,
                 new_local_exit_root,
