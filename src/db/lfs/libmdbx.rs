@@ -5,6 +5,7 @@ use config::File;
 use reth_libmdbx::*;
 use serde::Deserialize;
 use std::fs;
+use std::ops::RangeInclusive;
 use std::path::Path;
 
 pub struct Db(MdbxDB);
@@ -48,6 +49,10 @@ pub fn open_mdbx_db(config: Config) -> std::result::Result<Box<dyn EigenDB>, ()>
 
     let env = match Environment::builder()
         .set_max_dbs(config.max_dbs)
+        .set_geometry(Geometry::<RangeInclusive<usize>> {
+            size: Some(0..=1024 * 1024 * 1024 * 1024), // Max 1TB
+            ..Default::default()
+        })
         .open(std::path::Path::new(&config.path))
     {
         Ok(env) => env,
