@@ -275,6 +275,7 @@ impl ProverChannel {
         };
 
         loop {
+            log::debug!("=====================================loop");
             self.step = match &self.step {
                 ProveStep::Start => {
                     let batch = self.current_batch.unwrap();
@@ -430,9 +431,10 @@ impl ProverChannel {
                                     },
                                 )),
                             };
+                            log::debug!("Aggregate request: {:?}", request);
                             // send request to the endpoint
                             self.request_sender.send(request).await?;
-
+                            log::debug!("=======================1");
                             // waiting for the response from the endpoint
                             if let Some(ResponseType::GenAggregatedProof(
                                 gen_aggregated_proof_response,
@@ -468,6 +470,7 @@ impl ProverChannel {
                 }
 
                 ProveStep::Final(final_step) => {
+                    log::debug!("=======================final");
                     match final_step {
                         FinalStep::Final(batch_id, recursive_proof, batch_state_root) => {
                             let request = ProverRequest {

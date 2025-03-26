@@ -137,6 +137,7 @@ impl Settler {
                         }
                     };
 
+                    log::debug!("last_submitted_block({}), next_batch({})", last_submitted_block, next_batch);
                     if next_batch > last_submitted_block {
                         log::info!("no new block to prove, try again later");
                         continue;
@@ -356,6 +357,8 @@ impl Settler {
                         }
                     };
 
+                    log::debug!("last_submitted_block({}), last_sequence_finality_block_number({}), last_verified_block({})", last_submitted_block, last_sequence_finality_block_number, last_verified_block);
+
                     if last_submitted_block >= last_sequence_finality_block_number || last_verified_block < last_submitted_block{
                         log::info!("no new block to submit, try again later");
                         continue;
@@ -409,7 +412,7 @@ impl Settler {
 
                         // 3. update the next batch number, trigger the next prove task
                         // packing the next block
-                        db.put(keys::KEY_NEXT_BATCH.to_vec(), (last_submitted_block+1).to_be_bytes().to_vec());
+                        db.put(keys::KEY_NEXT_BATCH.to_vec(), (last_submitted_block+2).to_be_bytes().to_vec());
 
                         // 4. update the block status to Submitted, update the last submitted block number
                         log::info!("submit block({}) success", last_submitted_block + 1);

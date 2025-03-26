@@ -31,5 +31,5 @@ pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
         .unwrap_or("http://localhost:8001".to_string()),
     debug_proof: std::env::var("DEBUG_PROOF")
         .unwrap_or_else(|_| String::from("FALSE"))
-        .eq_ignore_ascii_case("FALSE"),
+        .eq_ignore_ascii_case("TRUE"),
 });
