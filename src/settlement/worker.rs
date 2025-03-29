@@ -3,6 +3,7 @@ use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};
 use alloy_rlp::{length_of_length, BytesMut, Encodable, Header};
+use alloy_consensus::TxLegacy;
 use anyhow::{anyhow, Result};
 use config::{Config, File};
 use ethers::prelude::U64;
@@ -10,11 +11,11 @@ use ethers_core::types::{BlockId, BlockNumber, Transaction};
 use ethers_providers::{Http, Middleware, Provider};
 use prost::bytes;
 use reqwest::Client;
-use reth_primitives::{Bytes, TransactionKind, TxLegacy};
 use serde::Deserialize;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use reth_db::mdbx::TransactionKind;
 use tokio::sync::mpsc;
 
 pub(crate) struct Settler {}
@@ -46,55 +47,6 @@ impl WorkerConfig {
 // and use event driven replacement of rotation databases to drive Zeth to run,
 // avoiding frequent database access
 
-pub fn gen_proof_without_prover(
-    db: Arc<Box<dyn Database>>,
-    next_batch: u64,
-    last_submitted_block: u64,
-) {
-    let mut batch = next_batch;
-    while batch <= last_submitted_block {
-        let proof_path = format!("{}/proof/proof.json", env!("CARGO_MANIFEST_DIR"));
-        let public_input_path = format!("{}/proof/public_input.json", env!("CARGO_MANIFEST_DIR"));
-        let proof: String = std::fs::read_to_string(proof_path).unwrap_or_default();
-        let public_input: String = std::fs::read_to_string(public_input_path).unwrap_or_default();
-
-        let mut default_bytes: [u8; 32] = Default::default();
-        default_bytes[24..].copy_from_slice(&(batch).to_le_bytes());
-        let execute_result = ProofResult {
-            block_number: batch,
-            proof,
-            public_input,
-            post_state_root: default_bytes,
-            ..Default::default()
-        };
-        log::info!("execute batch {} success: {:?}", batch, execute_result);
-        let key_with_prefix = format!(
-            "{}{}",
-            std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(),
-            execute_result.block_number
-        );
-        // save the proof to the database
-        let encoded_execute_result = serde_json::to_vec(&execute_result).unwrap();
-        db.put(key_with_prefix.as_bytes().to_vec(), encoded_execute_result);
-        // save the last proven block number, trigger the next verify task
-        db.put(
-            keys::KEY_LAST_PROVEN_BLOCK_NUMBER.to_vec(),
-            batch.to_be_bytes().to_vec(),
-        );
-        batch += 1;
-        db.put(keys::KEY_NEXT_BATCH.to_vec(), batch.to_be_bytes().to_vec());
-        // update the block status to Batching
-        let status_key = format!(
-            "{}{}",
-            std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(),
-            batch
-        );
-        let status = Status::Batching;
-        let encoded_status = serde_json::to_vec(&status).unwrap();
-        db.put(status_key.as_bytes().to_vec(), encoded_status);
-    }
-}
-
 impl Settler {
     pub(crate) async fn proof_worker(
         db: Arc<Box<dyn Database>>,
@@ -103,10 +55,7 @@ impl Settler {
         worker_interval: Duration,
     ) -> Result<()> {
         let mut ticker = tokio::time::interval(worker_interval);
-        let debug_proof = GLOBAL_ENV.debug_proof;
-        if !debug_proof {
-            prover.start().await.unwrap();
-        }
+        prover.start().await.unwrap();
 
         log::info!("Prove Worker started");
         loop {
@@ -142,30 +91,21 @@ impl Settler {
                         continue;
                     }
 
-                    if debug_proof{
-                        gen_proof_without_prover(db.clone(), next_batch, last_submitted_block);
-                        continue;
-                    }
-
                     let next_batch = db.get(keys::KEY_NEXT_BATCH);
                     let current_batch = prover.get_current_batch();
                     log::debug!("fetch block {:?}, {:?}", next_batch, current_batch);
 
-                    match (next_batch, current_batch) {
+                    match (next_batch, current_batch){
                         (None, None) => {
                             // insert the first block
                             // packing the first block
                             db.put(keys::KEY_NEXT_BATCH.to_vec(), 1_u64.to_be_bytes().to_vec());
                             // update the block status to Batching
-                            let status_key = format!(
-                                "{}{}",
-                                std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(),
-                                1
-                            );
+                            let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), 1);
                             let status = Status::Batching;
                             let encoded_status = serde_json::to_vec(&status).unwrap();
                             db.put(status_key.as_bytes().to_vec(), encoded_status);
-                        }
+                        },
                         (Some(no), None) => {
                             let block_no = u64::from_be_bytes(no.try_into().unwrap());
                             let prover_task = prover.execute(block_no);
@@ -173,7 +113,7 @@ impl Settler {
                                 result = prover_task => {
                                     match result {
                                         Ok(execute_result) => {
-                                            log::info!("execute batch {} success: {:?}", block_no, execute_result);
+                                           log::info!("execute batch {} success: {:?}", block_no, execute_result);
                                             // let block_number_str = execute_result.block_number.to_string();
 
                                             let key_with_prefix = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), execute_result.block_number);
@@ -204,12 +144,12 @@ impl Settler {
                                     return Ok(());
                                 }
                             }
-                        }
+                        },
                         (None, Some(no)) => todo!("Invalid branch, block: {no}"),
                         (Some(next), Some(cur)) => {
                             let block_no = u64::from_be_bytes(next.try_into().unwrap());
                             log::debug!("next: {block_no}, current: {cur}");
-                        }
+                        },
                     };
                 }
                 _ = stop_rx.recv() => {
@@ -252,17 +192,7 @@ impl Settler {
                         }
                     };
 
-                    let last_verified_batch = match db.get(keys::KEY_LAST_VERIFIED_BATCH_NUMBER) {
-                        None => {
-                            db.put(keys::KEY_LAST_VERIFIED_BATCH_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
-                            0
-                        }
-                        Some(block_number_bytes) => {
-                            u64::from_be_bytes(block_number_bytes.try_into().unwrap())
-                        }
-                    };
-
-                    log::info!("last proven block({}), last verified block({}), last verified batch({})", last_proven_block, last_verified_block, last_verified_batch);
+                    log::info!("last proven block({}), last verified block({})", last_proven_block, last_verified_block);
 
                     // if the last proven block is less than or equal to the last verified block, skip
                     // waiting for the new proof of the next block
@@ -277,12 +207,12 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()) {
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-                        let zeth_last_rollup_exit_root = get_rollup_exit_root_by_block(proof_data.block_number, &bridge_service_client).await?;
+                        let zeth_last_rollup_exit_root = get_last_rollup_exit_root(proof_data.block_number, &bridge_service_client).await?;
 
                         match settlement_provider.verify_batches(
                             0,
-                            last_verified_batch,
-                            last_verified_batch + 1,
+                            last_verified_block,
+                            last_verified_block + 1,
                             zeth_last_rollup_exit_root,
                             proof_data.post_state_root,
                             proof_data.proof,
@@ -291,7 +221,7 @@ impl Settler {
                             Ok(_) => {
                                 log::info!("verify proof success, block({})", proof_data.block_number);
                                 db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), proof_data.block_number.to_be_bytes().to_vec());
-                                db.put(keys::KEY_LAST_VERIFIED_BATCH_NUMBER.to_vec(), (last_verified_batch + 1).to_be_bytes().to_vec());
+
                                 // verify success, update the block status to Finalized
                                 let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), proof_data.block_number);
                                 let status = Status::Finalized;
@@ -346,24 +276,14 @@ impl Settler {
                         }
                     };
 
-                    let last_verified_block = match db.get(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER) {
-                        None => {
-                            db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), 0_u64.to_be_bytes().to_vec());
-                            0
-                        }
-                        Some(block_number_bytes) => {
-                            u64::from_be_bytes(block_number_bytes.try_into().unwrap())
-                        }
-                    };
-
-                    if last_submitted_block >= last_sequence_finality_block_number || last_verified_block < last_submitted_block{
+                    if last_submitted_block >= last_sequence_finality_block_number {
                         log::info!("no new block to submit, try again later");
                         continue;
                     }
+
                     log::info!("start to submit the block({})", last_submitted_block + 1);
                     let number = l2provider.get_block_number().await.map_err(|e| anyhow!("failed to get block number, err: {:?}", e))?;
                     log::info!("get_block_number success, number: {:?}", number);
-
                     // let block = l2provider.get_block_with_txs(last_submitted_block + 1).await.map_err(|e| anyhow!(e))?.ok_or(anyhow!("block not found"))?;
                     let block = l2provider.get_block_with_txs(BlockId::Number(BlockNumber::Number(U64::from(last_submitted_block + 1)))).await.map_err(|e| anyhow!("failed to get_block_with_txs, err: {:?}", e))?;
                     let block = match block {
@@ -390,7 +310,6 @@ impl Settler {
                         };
 
                         // 1. update the last verified block number, trigger the next verify task
-
                         db.put(keys::KEY_LAST_VERIFIED_BLOCK_NUMBER.to_vec(), execute_result.block_number.to_be_bytes().to_vec());
 
                         let status_key = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BLOCK_STATUS).unwrap(), execute_result.block_number);
@@ -399,7 +318,6 @@ impl Settler {
                         db.put(status_key.as_bytes().to_vec(), encoded_status);
 
                         // 2. update the last proven block number, trigger the next verify task
-
                         let key_with_prefix = format!("{}{}", std::str::from_utf8(prefix::PREFIX_BATCH_PROOF).unwrap(), execute_result.block_number);
                         // save the proof to the database
                         let encoded_execute_result = serde_json::to_vec(&execute_result).unwrap();
@@ -415,7 +333,6 @@ impl Settler {
                         log::info!("submit block({}) success", last_submitted_block + 1);
                         db.put(keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(), (last_submitted_block + 1).to_be_bytes().to_vec());
 
-                        db.del(key_with_prefix.as_bytes().to_vec());
                         continue;
                     }
                     let txs_clone = block.transactions;
@@ -489,11 +406,11 @@ fn convert_to_tx_legacy(tx: &Transaction) -> Result<TxLegacy> {
         gas_limit: tx.gas.as_u64(),
         to: match tx.to {
             Some(address) => {
-                TransactionKind::Call(reth_primitives::Address::from_slice(address.as_bytes()))
+                TransactionKind::Call(alloy_primitives::Address::from_slice(address.as_bytes()))
             }
             None => TransactionKind::Create,
         },
-        value: reth_primitives::alloy_primitives::Uint::from(tx.value.as_u128()),
+        value: alloy_primitives::Uint::from(tx.value.as_u128()),
         input,
     };
 
@@ -553,7 +470,7 @@ pub fn encode_eip155_fields(tx: &TxLegacy, out: &mut dyn bytes::BufMut) {
     }
 }
 
-pub async fn get_rollup_exit_root_by_block(
+pub async fn get_last_rollup_exit_root(
     block_number: u64,
     bridge_service_client: &Client,
 ) -> Result<[u8; 32]> {
@@ -596,61 +513,9 @@ pub async fn get_rollup_exit_root_by_block(
 mod tests {
     use super::*;
     use crate::db::lfs::libmdbx::{open_mdbx_db, Config};
-    use crate::settlement::custom::CustomSettlementConfig;
+    use crate::settlement::ethereum::EthereumSettlementConfig;
     use crate::settlement::{init_settlement_provider, NetworkSpec};
     use std::{env, fs};
-
-    #[tokio::test]
-    #[ignore = "slow"]
-    async fn test_proof_worker() {
-        env::set_var("RUST_LOG", "debug");
-        env::set_var("DEBUG_PROOF", "TRUE");
-        env_logger::init();
-        let path = "tmp/test_proof_worker";
-        let max_dbs = 20;
-        let config = Config {
-            path: path.to_string(),
-            max_dbs,
-        };
-
-        let db = open_mdbx_db(config).unwrap();
-        let arc_db = Arc::new(db);
-
-        arc_db.put(
-            keys::KEY_LAST_SUBMITTED_BLOCK_NUMBER.to_vec(),
-            1_u64.to_be_bytes().to_vec(),
-        );
-        arc_db.put(keys::KEY_NEXT_BATCH.to_vec(), 0_u64.to_be_bytes().to_vec());
-
-        let (tx, rx) = mpsc::channel(1);
-        let stop_rx = rx;
-
-        let conf_path = "configs/settlement.toml";
-        let config = WorkerConfig::from_conf_path(conf_path).unwrap();
-
-        let prover = ProverChannel::new("", "", arc_db.clone());
-        let submit_worker = Settler::proof_worker(
-            arc_db,
-            prover,
-            stop_rx,
-            Duration::from_secs(config.proof_worker_interval),
-        );
-
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-
-            tx.send(()).await.unwrap();
-        });
-
-        submit_worker
-            .await
-            .map_err(|e| log::error!("submit_worker error: {:?}", e))
-            .unwrap();
-        // wait for the submit worker to finish
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        fs::remove_dir_all(path).unwrap();
-    }
 
     #[tokio::test]
     #[ignore = "slow"]
@@ -678,15 +543,10 @@ mod tests {
 
         let l2provider = Provider::<Http>::try_from("http://localhost:8546").unwrap();
 
-        // let settlement_conf_path = "configs/settlement.toml";
-        // let settlement_spec = NetworkSpec::Ethereum(
-        //     EthereumSettlementConfig::from_conf_path(settlement_conf_path).unwrap(),
-        // );
-
-        let config = CustomSettlementConfig {
-            service_url: GLOBAL_ENV.bridge_service_addr.clone(),
-        };
-        let settlement_spec = NetworkSpec::Custom(config);
+        let settlement_conf_path = "configs/settlement.toml";
+        let settlement_spec = NetworkSpec::Ethereum(
+            EthereumSettlementConfig::from_conf_path(settlement_conf_path).unwrap(),
+        );
 
         log::info!("settlement_spec: {:#?}", settlement_spec);
 
@@ -769,10 +629,10 @@ mod tests {
             proof_data_json.as_bytes().to_vec(),
         );
 
-        let config = CustomSettlementConfig {
-            service_url: GLOBAL_ENV.bridge_service_addr.clone(),
-        };
-        let settlement_spec = NetworkSpec::Custom(config);
+        let settlement_conf_path = "configs/settlement.toml";
+        let settlement_spec = NetworkSpec::Ethereum(
+            EthereumSettlementConfig::from_conf_path(settlement_conf_path).unwrap(),
+        );
 
         log::info!("settlement_spec: {:#?}", settlement_spec);
 
@@ -790,7 +650,7 @@ mod tests {
             arc_db,
             arc_settlement_provider,
             stop_rx,
-            Duration::from_secs(config.verify_worker_interval),
+            Duration::from_secs(config.rollup_worker_interval),
         );
 
         tokio::spawn(async move {
@@ -810,14 +670,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "slow"]
     async fn test_bridge_service() -> Result<(), Box<dyn std::error::Error>> {
         env::set_var("RUST_LOG", "debug");
         env_logger::init();
         let bridge_service_client = Client::new();
 
         let zeth_last_rollup_exit_root =
-            get_rollup_exit_root_by_block(13, &bridge_service_client).await?;
+            get_last_rollup_exit_root(13, &bridge_service_client).await?;
         log::info!(
             "zeth_last_rollup_exit_root: {:?}",
             zeth_last_rollup_exit_root

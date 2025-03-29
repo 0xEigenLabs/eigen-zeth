@@ -1,54 +1,91 @@
-use reth_beacon_consensus::BeaconConsensus;
-use reth_node_builder::{
-    components::{ComponentsBuilder, PayloadServiceBuilder},
-    node::NodeTypes,
-    BuilderContext, FullNodeTypes, Node, NodeBuilder, PayloadBuilderConfig,
-};
-use reth_primitives::revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg};
-use reth_primitives::{
-    proofs, Address, Block, ChainSpec, Header, IntoRecoveredTransaction, Receipt, Receipts,
-    Withdrawals, B256, EMPTY_OMMER_ROOT_HASH,
-};
-use std::sync::Arc;
-
-use reth_basic_payload_builder::{
-    commit_withdrawals, is_better_payload, pre_block_beacon_root_contract_call,
-    BasicPayloadJobGenerator, BasicPayloadJobGeneratorConfig, BuildArguments, BuildOutcome,
-    PayloadBuilder, PayloadConfig, WithdrawalsOutcome,
-};
-use reth_db::init_db;
-use reth_node_api::{
-    validate_version_specific_fields, AttributesValidationError, EngineApiMessageVersion,
-    EngineTypes, PayloadAttributes, PayloadBuilderAttributes, PayloadOrAttributes,
-};
-use reth_provider::{
-    providers::{BlockchainProvider, ProviderFactory},
-    BundleStateWithReceipts, CanonStateSubscriptions, StateProviderFactory,
-};
-use reth_tasks::TaskManager;
-use reth_transaction_pool::{
-    BestTransactionsAttributes, PoolTransaction, TransactionPool, ValidPoolTransaction,
-};
-
-use reth_node_ethereum::{
-    node::{EthereumNetworkBuilder, EthereumPoolBuilder},
-    EthEvmConfig,
-};
-use reth_payload_builder::{
-    error::PayloadBuilderError, EthBuiltPayload, EthPayloadBuilderAttributes, PayloadBuilderHandle,
-    PayloadBuilderService,
-};
-use reth_rpc_types::{
-    engine::{
-        ExecutionPayloadEnvelopeV2, ExecutionPayloadEnvelopeV3,
-        PayloadAttributes as EthPayloadAttributes, PayloadId,
-    },
-    withdrawal::Withdrawal,
+use reth::consensus::Consensus;
+use reth::builder::PayloadBuilderConfig;
+use reth_node_ethereum::node::EthereumConsensusBuilder;
+use reth_node_builder::components::BasicPayloadServiceBuilder;
+use reth_node_ethereum::EthereumEthApiBuilder;
+use reth_node_ethereum::node::EthereumExecutorBuilder;
+use reth_db::mdbx::DatabaseArguments;
+use alloy_eips::eip4844::MAX_DATA_GAS_PER_BLOCK;
+use alloy_eips::merge::BEACON_NONCE;
+use alloy_consensus::constants::EMPTY_WITHDRAWALS;
+//use reth_optimism_primitives::ADDRESS_L2_TO_L1_MESSAGE_PASSER;
+use alloy_consensus::EMPTY_OMMER_ROOT_HASH;
+use revm::context_interface::result::{EVMError, InvalidTransaction};
+use reth::rpc::types::Withdrawal;
+use reth_provider::ExecutionOutcome;
+use reth::beacon_consensus::EthBeaconConsensus;
+use reth_node_ethereum::engine::EthPayloadAttributes;
+use reth::payload::PayloadId;
+use revm::{context_interface::result::ResultAndState, DatabaseCommit, DatabaseRef};
+use reth::rpc::types::Withdrawals;
+use reth_node_ethereum::engine::{
     ExecutionPayloadV1,
+    ExecutionPayloadEnvelopeV2,
+    ExecutionPayloadEnvelopeV3,
+    ExecutionPayloadEnvelopeV4,
 };
+use reth_payload_builder::PayloadBuilderService;
+use reth_basic_payload_builder::is_better_payload;
+use reth_basic_payload_builder::BasicPayloadJobGenerator;
+use reth_transaction_pool::Pool;
+use reth_primitives::Receipt;
+use reth::chainspec::ChainSpec;
+use reth_db::Receipts;
+use reth_node_core::primitives::proofs;
+use reth_node_core::primitives::Header;
+use alloy_primitives::{Address, B256, address};
+use reth::transaction_pool::ValidPoolTransaction;
+use reth::revm::database::StateProviderDatabase;
+use reth_basic_payload_builder::BasicPayloadJobGeneratorConfig;
+use std::fmt;
+use reth::{
+    api::{InvalidPayloadAttributesError, PayloadTypes},
+    builder::{
+        components::{PayloadServiceBuilder, ComponentsBuilder, PayloadBuilderBuilder},
+        node::NodeTypes,
+        rpc::{EngineValidatorBuilder, RpcAddOns},
+        BuilderContext, FullNodeTypes, Node, NodeAdapter, NodeBuilder, NodeComponentsBuilder,
+    },
+    primitives::{Block, EthPrimitives, RecoveredBlock, SealedBlock, TransactionSigned},
+    providers::{EthStorage, StateProviderFactory},
+    rpc::types::engine::ExecutionPayload,
+    tasks::TaskManager,
+    transaction_pool::{PoolTransaction, TransactionPool},
+};
+use reth_basic_payload_builder::{BuildArguments, BuildOutcome, PayloadConfig};
+use reth_ethereum_payload_builder::{EthereumBuilderConfig};
+use reth_node_api::{
+    EngineTypes,
+    FullNodeComponents, PayloadAttributes, PayloadBuilderAttributes,
+};
+use reth_node_core::{node_config::NodeConfig};
+use reth_node_ethereum::{
+    node::{
+        EthereumNetworkBuilder,
+        EthereumPoolBuilder,
+    },
+    EthEvmConfig, 
+    EthEngineTypes,
+};
+use reth_payload_builder::{EthBuiltPayload, EthPayloadBuilderAttributes, PayloadBuilderError, PayloadBuilderHandle};
 use reth_tracing::{RethTracer, Tracer};
 use serde::{Deserialize, Serialize};
-use std::convert::Infallible;
+use std::{convert::Infallible, sync::Arc};
+
+
+/// The L2 contract `L2ToL1MessagePasser`, stores commitments to withdrawal transactions.
+pub const ADDRESS_L2_TO_L1_MESSAGE_PASSER: Address =
+    address!("0x4200000000000000000000000000000000000016");
+
+use reth_db::init_db;
+use reth_provider::{
+    providers::{BlockchainProvider, ProviderFactory},
+    CanonStateSubscriptions,
+};
+use reth_transaction_pool::{
+    BestTransactionsAttributes,
+};
+
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
@@ -61,22 +98,10 @@ use anyhow::{anyhow, Result};
 use config::{Config, File};
 use jsonrpsee::tracing;
 use jsonrpsee::tracing::{debug, trace};
-use reth_blockchain_tree::{
-    BlockchainTree, BlockchainTreeConfig, ShareableBlockchainTree, TreeExternals,
-};
-use reth_db::mdbx::DatabaseArguments;
-use reth_interfaces::consensus::Consensus;
-use reth_node_core::node_config::NodeConfig;
-use reth_node_core::primitives::U256;
-use reth_primitives::constants::eip4844::MAX_DATA_GAS_PER_BLOCK;
-use reth_primitives::constants::BEACON_NONCE;
-use reth_primitives::eip4844::calculate_excess_blob_gas;
-use reth_primitives::revm::env::tx_env_with_recovered;
-use reth_revm::database::StateProviderDatabase;
 use reth_revm::db::states::bundle_state::BundleRetention;
-use reth_revm::{revm, EvmProcessorFactory, State};
-use revm_primitives::{db::DatabaseCommit, hex::ToHexExt};
-use revm_primitives::{EVMError, EnvWithHandlerCfg, InvalidTransaction, ResultAndState};
+use reth_revm::{revm, State};
+
+use alloy_primitives::U256;
 
 pub(crate) mod eigen;
 
@@ -109,23 +134,6 @@ impl PayloadAttributes for CustomPayloadAttributes {
 
     fn parent_beacon_block_root(&self) -> Option<B256> {
         self.inner.parent_beacon_block_root()
-    }
-
-    fn ensure_well_formed_attributes(
-        &self,
-        chain_spec: &ChainSpec,
-        version: EngineApiMessageVersion,
-    ) -> Result<(), AttributesValidationError> {
-        validate_version_specific_fields(chain_spec, version, self.into())?;
-
-        // // custom validation logic - ensure that the custom field is not zero
-        // if self.custom == 0 {
-        //     return Err(AttributesValidationError::invalid_params(
-        //         CustomError::CustomFieldIsNotZero,
-        //     ));
-        // }
-
-        Ok(())
     }
 }
 
@@ -171,14 +179,6 @@ impl PayloadBuilderAttributes for CustomPayloadBuilderAttributes {
     fn withdrawals(&self) -> &Withdrawals {
         &self.0.withdrawals
     }
-
-    fn cfg_and_block_env(
-        &self,
-        chain_spec: &ChainSpec,
-        parent: &Header,
-    ) -> (CfgEnvWithHandlerCfg, BlockEnv) {
-        self.0.cfg_and_block_env(chain_spec, parent)
-    }
 }
 
 /// Custom engine types - uses a custom payload attributes RPC type, but uses the default
@@ -188,20 +188,10 @@ impl PayloadBuilderAttributes for CustomPayloadBuilderAttributes {
 pub struct CustomEngineTypes;
 
 impl EngineTypes for CustomEngineTypes {
-    type PayloadAttributes = CustomPayloadAttributes;
-    type PayloadBuilderAttributes = CustomPayloadBuilderAttributes;
-    type BuiltPayload = EthBuiltPayload;
-    type ExecutionPayloadV1 = ExecutionPayloadV1;
-    type ExecutionPayloadV2 = ExecutionPayloadEnvelopeV2;
-    type ExecutionPayloadV3 = ExecutionPayloadEnvelopeV3;
-
-    fn validate_version_specific_fields(
-        chain_spec: &ChainSpec,
-        version: EngineApiMessageVersion,
-        payload_or_attrs: PayloadOrAttributes<'_, CustomPayloadAttributes>,
-    ) -> Result<(), AttributesValidationError> {
-        validate_version_specific_fields(chain_spec, version, payload_or_attrs)
-    }
+    type ExecutionPayloadEnvelopeV1 = ExecutionPayloadV1;
+    type ExecutionPayloadEnvelopeV2 = ExecutionPayloadEnvelopeV2;
+    type ExecutionPayloadEnvelopeV3 = ExecutionPayloadEnvelopeV3;
+    type ExecutionPayloadEnvelopeV4 = ExecutionPayloadEnvelopeV4;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -249,43 +239,61 @@ impl TxFilterConfig {
     }
 }
 
+use reth_trie_db::MerklePatriciaTrie;
 /// Configure the node types
 impl NodeTypes for MyCustomNode {
-    type Primitives = ();
-    // use the custom engine types
-    type Engine = CustomEngineTypes;
-    // use the default ethereum EVM config
-    type Evm = EthEvmConfig;
-
-    fn evm_config(&self) -> Self::Evm {
-        Self::Evm::default()
-    }
+    type Primitives = EthPrimitives;
+    type ChainSpec = ChainSpec;
+    type StateCommitment = MerklePatriciaTrie;
+    type Storage = EthStorage;
+    type Payload = CustomEngineTypes;
 }
+
+/// Custom addons configuring RPC types
+pub type MyNodeAddOns<N> = RpcAddOns<N, EthereumEthApiBuilder, CustomEngineValidatorBuilder>;
 
 /// Implement the Node trait for the custom node
 ///
 /// This provides a preset configuration for the node
 impl<N> Node<N> for MyCustomNode
 where
-    N: FullNodeTypes<Engine = CustomEngineTypes>,
+    N: FullNodeTypes<
+        Types: NodeTypes<
+            Payload = CustomEngineTypes,
+            ChainSpec = ChainSpec,
+            Primitives = EthPrimitives,
+            Storage = EthStorage,
+        >,
+    >,
 {
-    type PoolBuilder = EthereumPoolBuilder;
-    type NetworkBuilder = EthereumNetworkBuilder;
-    type PayloadBuilder = CustomPayloadServiceBuilder;
+    type ComponentsBuilder = ComponentsBuilder<
+        N,
+        EthereumPoolBuilder,
+        BasicPayloadServiceBuilder<CustomPayloadBuilderBuilder>,
+        EthereumNetworkBuilder,
+        EthereumExecutorBuilder,
+        EthereumConsensusBuilder,
+    >;
+    type AddOns = MyNodeAddOns<
+        NodeAdapter<N, <Self::ComponentsBuilder as NodeComponentsBuilder<N>>::Components>,
+    >;
 
-    fn components(
-        self,
-    ) -> ComponentsBuilder<N, Self::PoolBuilder, Self::PayloadBuilder, Self::NetworkBuilder> {
+    fn components_builder(&self) -> Self::ComponentsBuilder {
         ComponentsBuilder::default()
             .node_types::<N>()
             .pool(EthereumPoolBuilder::default())
-            // .payload(CustomPayloadServiceBuilder::default())
-            .payload(CustomPayloadServiceBuilder::new(self.tx_filter_config))
+            .payload(BasicPayloadServiceBuilder::default())
             .network(EthereumNetworkBuilder::default())
+            .executor(EthereumExecutorBuilder::default())
+            .consensus(EthereumConsensusBuilder::default())
+    }
+
+    fn add_ons(&self) -> Self::AddOns {
+        MyNodeAddOns::default()
     }
 }
 
-/// A custom payload service builder that supports the custom engine types
+/// A custom payload service builder that supports the custom eng/ine types
 #[derive(Debug, Default, Clone)]
 #[non_exhaustive]
 pub struct CustomPayloadServiceBuilder {
@@ -301,33 +309,44 @@ impl CustomPayloadServiceBuilder {
 
 impl<Node, Pool> PayloadServiceBuilder<Node, Pool> for CustomPayloadServiceBuilder
 where
-    Node: FullNodeTypes<Engine = CustomEngineTypes>,
-    Pool: TransactionPool + Unpin + 'static,
+    Node: FullNodeTypes<
+        Types: NodeTypes<
+            Payload = EthEngineTypes,
+            ChainSpec = ChainSpec,
+            Primitives = EthPrimitives,
+        >,
+    >,
+    Pool: TransactionPool<Transaction: PoolTransaction<Consensus = TransactionSigned>>
+        + Unpin
+        + 'static,
 {
-    async fn spawn_payload_service(
+    async fn spawn_payload_builder_service(
         self,
         ctx: &BuilderContext<Node>,
         pool: Pool,
-    ) -> eyre::Result<PayloadBuilderHandle<Node::Engine>> {
+    ) -> eyre::Result<PayloadBuilderHandle<<Node::Types as NodeTypes>::Payload>> {
         // let payload_builder = CustomPayloadBuilder::default();
-        let payload_builder = CustomPayloadBuilder::new(self.tx_filter_config);
+        //let payload_builder = CustomPayloadBuilder::new(self.tx_filter_config);
+        let payload_builder = reth_ethereum_payload_builder::EthereumPayloadBuilder::new(
+            ctx.provider().clone(),
+            pool,
+            EthEvmConfig::new(ctx.chain_spec()),
+            EthereumBuilderConfig::new(),
+        );
         let conf = ctx.payload_builder_config();
 
         let payload_job_config = BasicPayloadJobGeneratorConfig::default()
             .interval(conf.interval())
             .deadline(conf.deadline())
-            .max_payload_tasks(conf.max_payload_tasks())
-            .extradata(conf.extradata_rlp_bytes())
-            .max_gas_limit(conf.max_gas_limit());
+            .max_payload_tasks(conf.max_payload_tasks());
 
         let payload_generator = BasicPayloadJobGenerator::with_builder(
             ctx.provider().clone(),
-            pool,
             ctx.task_executor().clone(),
             payload_job_config,
-            ctx.chain_spec(),
             payload_builder,
         );
+        
         let (payload_service, payload_builder) =
             PayloadBuilderService::new(payload_generator, ctx.provider().canonical_state_stream());
 
@@ -338,111 +357,105 @@ where
     }
 }
 
-/// The type responsible for building custom payloads
-#[derive(Debug, Default, Clone)]
-#[non_exhaustive]
-pub struct CustomPayloadBuilder {
-    // custom fields
-    pub tx_filter_config: TxFilterConfig,
-}
-
-impl CustomPayloadBuilder {
-    pub fn new(tx_filter_config: TxFilterConfig) -> Self {
-        Self { tx_filter_config }
-    }
-}
-
-impl<Pool, Client> PayloadBuilder<Pool, Client> for CustomPayloadBuilder
-where
-    Client: StateProviderFactory,
-    Pool: TransactionPool,
-{
-    type Attributes = CustomPayloadBuilderAttributes;
-    type BuiltPayload = EthBuiltPayload;
-
-    // When the CL (Consensus Client) creates a new proposal, it accesses the EL (Execution Client) by calling the get_payload_v4 API to get the ExecutionPayload.
-    // The ExecutionPayload is built here by selecting high gas fee transactions from the transaction pool to construct a new block.
-    fn try_build(
-        &self,
-        args: BuildArguments<Pool, Client, Self::Attributes, Self::BuiltPayload>,
-    ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
-        let BuildArguments {
-            client,
-            pool,
-            cached_reads,
-            config,
-            cancel,
-            best_payload,
-        } = args;
-        let PayloadConfig {
-            initialized_block_env,
-            initialized_cfg,
-            parent_block,
-            extra_data,
-            attributes,
-            chain_spec,
-        } = config;
-
-        // This reuses the default EthereumPayloadBuilder to build the payload
-        // but any custom logic can be implemented here
-        // reth_ethereum_payload_builder::EthereumPayloadBuilder::default().try_build(BuildArguments {
-        //     client,
-        //     pool,
-        //     cached_reads,
-        //     config: PayloadConfig {
-        //         initialized_block_env,
-        //         initialized_cfg,
-        //         parent_block,
-        //         extra_data,
-        //         attributes: attributes.0,
-        //         chain_spec,
-        //     },
-        //     cancel,
-        //     best_payload,
-        // })
-
-        // we can customize the payload builder here, to control the block building process
-        custom_payload_builder(
-            BuildArguments {
-                client,
-                pool,
-                cached_reads,
-                config: PayloadConfig {
-                    initialized_block_env,
-                    initialized_cfg,
-                    parent_block,
-                    extra_data,
-                    attributes: attributes.0,
-                    chain_spec,
-                },
-                cancel,
-                best_payload,
-            },
-            self.tx_filter_config.clone(),
-        )
-    }
-
-    fn build_empty_payload(
-        client: &Client,
-        config: PayloadConfig<Self::Attributes>,
-    ) -> Result<Self::BuiltPayload, PayloadBuilderError> {
-        let PayloadConfig {
-            initialized_block_env,
-            initialized_cfg,
-            parent_block,
-            extra_data,
-            attributes,
-            chain_spec,
-        } = config;
-        <reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(
-            client,
-            PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
-        )
-    }
-}
+///// The type responsible for building custom payloads
+//#[derive(Debug, Default, Clone)]
+//#[non_exhaustive]
+//pub struct CustomPayloadBuilder {
+//    // custom fields
+//    pub tx_filter_config: TxFilterConfig,
+//}
+//
+//impl CustomPayloadBuilder {
+//    pub fn new(tx_filter_config: TxFilterConfig) -> Self {
+//        Self { tx_filter_config }
+//    }
+//}
+//
+//impl PayloadBuilder for CustomPayloadBuilder
+//where
+//    Client: StateProviderFactory,
+//    Pool: TransactionPool,
+//{
+//    type Attributes = CustomPayloadBuilderAttributes;
+//    type BuiltPayload = EthBuiltPayload;
+//
+//    // When the CL (Consensus Client) creates a new proposal, it accesses the EL (Execution Client) by calling the get_payload_v4 API to get the ExecutionPayload.
+//    // The ExecutionPayload is built here by selecting high gas fee transactions from the transaction pool to construct a new block.
+//    fn try_build(
+//        &self,
+//        args: BuildArguments<Self::Attributes, Self::BuiltPayload>,
+//    ) -> Result<BuildOutcome<Self::BuiltPayload>, PayloadBuilderError> {
+//        let BuildArguments {
+//            client,
+//            pool,
+//            cached_reads,
+//            config,
+//            cancel,
+//            best_payload,
+//        } = args;
+//        let PayloadConfig {
+//            initialized_block_env,
+//            initialized_cfg,
+//            parent_block,
+//            extra_data,
+//            attributes,
+//            chain_spec,
+//        } = config;
+//
+//        // This reuses the default EthereumPayloadBuilder to build the payload
+//        // but any custom logic can be implemented here
+//        // reth_ethereum_payload_builder::EthereumPayloadBuilder::default().try_build(BuildArguments {
+//        //     client,
+//        //     pool,
+//        //     cached_reads,
+//        //     config: PayloadConfig {
+//        //         initialized_block_env,
+//        //         initialized_cfg,
+//        //         parent_block,
+//        //         extra_data,
+//        //         attributes: attributes.0,
+//        //         chain_spec,
+//        //     },
+//        //     cancel,
+//        //     best_payload,
+//        // })
+//
+//        // we can customize the payload builder here, to control the block building process
+//        custom_payload_builder(
+//            BuildArguments {
+//                client,
+//                pool,
+//                cached_reads,
+//                config: PayloadConfig {
+//                    initialized_block_env,
+//                    initialized_cfg,
+//                    parent_block,
+//                    extra_data,
+//                    attributes: attributes.0,
+//                    chain_spec,
+//                },
+//                cancel,
+//                best_payload,
+//            },
+//            self.tx_filter_config.clone(),
+//        )
+//    }
+//
+//    fn build_empty_payload(
+//        client: &Client,
+//        config: PayloadConfig<Self::Attributes>,
+//    ) -> Result<Self::BuiltPayload, PayloadBuilderError> {
+//        let PayloadConfig { parent_header, attributes } = config;
+//        self.inner.build_empty_payload(PayloadConfig { parent_header, attributes: attributes.0 })
+//        //<reth_ethereum_payload_builder::EthereumPayloadBuilder  as PayloadBuilder<Pool,Client>>  ::build_empty_payload(
+//        //    client,
+//        //    PayloadConfig { initialized_block_env, initialized_cfg, parent_block, extra_data, attributes: attributes.0, chain_spec }
+//        //)
+//    }
+//}
 
 pub fn custom_payload_builder<Pool, Client>(
-    args: BuildArguments<Pool, Client, EthPayloadBuilderAttributes, EthBuiltPayload>,
+    args: BuildArguments<EthPayloadBuilderAttributes, EthBuiltPayload>,
     tx_filter_config: TxFilterConfig,
 ) -> std::result::Result<BuildOutcome<EthBuiltPayload>, PayloadBuilderError>
 where
@@ -601,14 +614,16 @@ where
         }
 
         // Configure the environment for the block.
-        let mut evm = revm::Evm::builder()
-            .with_db(&mut db)
-            .with_env_with_handler_cfg(EnvWithHandlerCfg::new_with_cfg_env(
-                initialized_cfg.clone(),
-                initialized_block_env.clone(),
-                tx_env_with_recovered(&tx),
-            ))
-            .build();
+        //let mut evm = revm::Evm::builder()
+        //    .with_db(&mut db)
+        //    .with_env_with_handler_cfg(EnvWithHandlerCfg::new_with_cfg_env(
+        //        initialized_cfg.clone(),
+        //        initialized_block_env.clone(),
+        //        evm_config.tx_env(&tx),
+        //    ))
+        //    .build();
+        let mut evm_env = EthEvmConfig::default().evm_env(&header);
+        let mut evm = EthEvmConfig::default().evm_with_env(&mut db, evm_env);
 
         let ResultAndState { result, state } = match evm.transact() {
             Ok(res) => res,
@@ -684,24 +699,45 @@ where
         });
     }
 
-    let WithdrawalsOutcome {
-        withdrawals_root,
-        withdrawals,
-    } = commit_withdrawals(
-        &mut db,
-        &chain_spec,
-        attributes.timestamp,
-        attributes.withdrawals,
-    )?;
+    //let WithdrawalsOutcome {
+    //    withdrawals_root,
+    //    withdrawals,
+    //} = commit_withdrawals(
+    //    &mut db,
+    //    &chain_spec,
+    //    attributes.timestamp,
+    //    attributes.withdrawals,
+    //)?;
+    let BlockBuilderOutcome { execution_result, block, .. } = builder.finish(&state_provider)?;
+
+    let requests = chain_spec
+        .is_prague_active_at_timestamp(attributes.timestamp)
+        .then_some(execution_result.requests);
+
+    let withdrawals_root = if ctx.is_isthmus_active() {
+        // withdrawals root field in block header is used for storage root of L2 predeploy
+        // `l2tol1-message-passer`
+        Some(
+            state
+                .database
+                .as_ref()
+                .storage_root(ADDRESS_L2_TO_L1_MESSAGE_PASSER, Default::default())?,
+        )
+    } else if ctx.is_canyon_active() {
+        Some(EMPTY_WITHDRAWALS)
+    } else {
+        None
+    };
 
     // merge all transitions into bundle state, this would apply the withdrawal balance changes
     // and 4788 contract call
     db.merge_transitions(BundleRetention::PlainState);
 
-    let bundle = BundleStateWithReceipts::new(
+    let bundle = ExecutionOutcome::new(
         db.take_bundle(),
-        Receipts::from_vec(vec![receipts]),
+        vec![receipts],
         block_number,
+        requests,
     );
     let receipts_root = bundle
         .receipts_root_slow(block_number)
@@ -733,16 +769,13 @@ where
         )?;
 
         excess_blob_gas = if chain_spec.is_cancun_active_at_timestamp(parent_block.timestamp) {
-            let parent_excess_blob_gas = parent_block.excess_blob_gas.unwrap_or_default();
-            let parent_blob_gas_used = parent_block.blob_gas_used.unwrap_or_default();
-            Some(calculate_excess_blob_gas(
-                parent_excess_blob_gas,
-                parent_blob_gas_used,
-            ))
+            parent_block.maybe_next_block_excess_blob_gas(
+                self.chain_spec.blob_params_at_timestamp(timestamp),
+            )
         } else {
             // for the first post-fork block, both parent.blob_gas_used and
             // parent.excess_blob_gas are evaluated as 0
-            Some(calculate_excess_blob_gas(0, 0))
+            Some(alloy_eips::eip7840::BlobParams::cancun().next_block_excess_blob_gas(0, 0))
         };
 
         blob_gas_used = Some(sum_blob_gas_used);
@@ -779,10 +812,10 @@ where
         withdrawals,
     };
 
-    let sealed_block = block.seal_slow();
-    debug!(target: "payload_builder", ?sealed_block, "sealed built block");
+    let sealed_block = Arc::new(block.sealed_block().clone());
+    debug!(target: "payload_builder", id=%attributes.id, sealed_block_header = ?sealed_block.sealed_header(), "sealed built block");
 
-    let mut payload = EthBuiltPayload::new(attributes.id, sealed_block, total_fees);
+    let mut payload = EthBuiltPayload::new(attributes.id, sealed_block, total_fees, requests);
 
     // extend the payload with the blob sidecars from the executed txs
     payload.extend_sidecars(blob_sidecars);
@@ -880,21 +913,11 @@ pub async fn launch_custom_node(
     let factory =
         ProviderFactory::new(database.clone(), spec.clone(), data_dir.static_files_path())?;
 
-    let consensus: Arc<dyn Consensus> = Arc::new(BeaconConsensus::new(Arc::clone(&spec)));
+    let consensus: Arc<dyn Consensus> = Arc::new(EthBeaconConsensus::new(Arc::clone(&spec)));
 
     let evm_config = EthEvmConfig::default();
 
-    // Configure blockchain tree
-    let tree_externals = TreeExternals::new(
-        factory.clone(),
-        Arc::clone(&consensus),
-        EvmProcessorFactory::new(spec.clone(), evm_config),
-    );
-
-    let tree = BlockchainTree::new(tree_externals, BlockchainTreeConfig::default(), None)?;
-    let blockchain_tree = ShareableBlockchainTree::new(tree);
-
-    let provider = BlockchainProvider::new(factory, blockchain_tree.clone())?;
+    let provider = BlockchainProvider::new(factory)?;
 
     let handle = NodeBuilder::new(node_config)
         .with_database(database)

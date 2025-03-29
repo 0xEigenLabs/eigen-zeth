@@ -7,7 +7,6 @@ use crate::custom_reth;
 use crate::custom_reth::TxFilterConfig;
 use crate::db::lfs;
 use crate::operator::Operator;
-use crate::settlement::custom::CustomSettlementConfig;
 use crate::settlement::ethereum::EthereumSettlementConfig;
 use crate::settlement::worker::WorkerConfig;
 use crate::settlement::NetworkSpec;
@@ -23,7 +22,7 @@ pub struct RunCmd {
     #[clap(flatten)]
     // pub reth_cmd: NodeCommand,
     pub reth_cmd: RethCmd,
-    // /// The log level of the node.
+    /// The log level of the node.
     // #[arg(
     //     long,
     //     value_name = "LOG_LEVEL",
@@ -32,6 +31,7 @@ pub struct RunCmd {
     //     ignore_case = true,
     // )]
     // pub log_level: LogLevel,
+
     /// The settlement layer to use.
     #[arg(
         long,
@@ -141,7 +141,6 @@ impl fmt::Display for SettlementLayer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SettlementLayer::Ethereum => write!(f, "ethereum"),
-            SettlementLayer::Custom => write!(f, "custom"),
         }
     }
 }
@@ -150,7 +149,6 @@ impl fmt::Display for SettlementLayer {
 #[non_exhaustive]
 pub enum SettlementLayer {
     Ethereum,
-    Custom,
 }
 
 impl RunCmd {
@@ -176,12 +174,6 @@ impl RunCmd {
                     )?)
                 }
             },
-            SettlementLayer::Custom => {
-                log::info!("Using Custom SettlementLayer");
-                NetworkSpec::Custom(CustomSettlementConfig {
-                    service_url: GLOBAL_ENV.bridge_service_addr.clone(),
-                })
-            }
         };
 
         let tx_filter_config = match &self.custom_node_conf {

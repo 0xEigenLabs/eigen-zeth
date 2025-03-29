@@ -4,31 +4,40 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reth-tasks = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tasks", rev = "8cffebd72" }
-reth-rpc = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc", rev = "8cffebd72" }
-#reth-rpc-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-api", rev = "8cffebd72" }
-reth-rpc-types = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-types", rev = "8cffebd72" }
-reth-provider = { git = "https://github.com/0xEigenLabs/reth", package = "reth-provider", rev = "8cffebd72" }
-reth-transaction-pool = { git = "https://github.com/0xEigenLabs/reth", package = "reth-transaction-pool", rev = "8cffebd72" }
-reth-primitives = { git = "https://github.com/0xEigenLabs/reth", package = "reth-primitives", rev = "8cffebd72" }
-reth-tracing = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tracing", rev = "8cffebd72" }
-reth-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-payload-builder", rev = "8cffebd72" }
-reth-ethereum-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-ethereum-payload-builder", rev = "8cffebd72" }
-reth-basic-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-basic-payload-builder", rev = "8cffebd72" }
-reth-node-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-builder", rev = "8cffebd72" }
-reth-node-ethereum = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-ethereum", rev = "8cffebd72" }
-reth-node-core = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-core", rev = "8cffebd72" }
-reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-api", rev = "8cffebd72" }
-reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db", rev = "8cffebd72" }
-reth-blockchain-tree = { git = "https://github.com/0xEigenLabs/reth", package = "reth-blockchain-tree", rev = "8cffebd72" }
-reth-beacon-consensus = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
-reth-revm = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
-reth-interfaces = { git = "https://github.com/0xEigenLabs/reth", rev = "8cffebd72" }
+reth-tasks = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tasks" }
+reth-rpc = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc" }
+#reth-rpc-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-api" }
+#reth-rpc-types = { git = "https://github.com/0xEigenLabs/reth", package = "reth-rpc-types" }
+reth-provider = { git = "https://github.com/0xEigenLabs/reth", package = "reth-provider" }
+reth-transaction-pool = { git = "https://github.com/0xEigenLabs/reth", package = "reth-transaction-pool" }
+reth-primitives = { git = "https://github.com/0xEigenLabs/reth", package = "reth-primitives" }
+reth-tracing = { git = "https://github.com/0xEigenLabs/reth", package = "reth-tracing" }
+reth-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-payload-builder" }
+reth-ethereum-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-ethereum-payload-builder" }
+reth-basic-payload-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-basic-payload-builder" }
+reth-node-builder = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-builder" }
+reth-node-ethereum = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-ethereum" }
+reth-node-core = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-core" }
+reth-node-api = { git = "https://github.com/0xEigenLabs/reth", package = "reth-node-api" }
+reth-db = { git = "https://github.com/0xEigenLabs/reth", package = "reth-db" }
+reth-consensus = { git = "https://github.com/0xEigenLabs/reth" }
+reth-revm = { git = "https://github.com/0xEigenLabs/reth" }
+#reth-interfaces = { git = "https://github.com/0xEigenLabs/reth" }
 # Database
-reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx", rev = "8cffebd72" }
+reth-libmdbx = { git = "https://github.com/0xEigenLabs/reth", package = "reth-libmdbx" }
+reth-trie-db = { git = "https://github.com/0xEigenLabs/reth" } 
+reth = { git = "https://github.com/0xEigenLabs/reth" } 
+reth-db-common = { git = "https://github.com/0xEigenLabs/reth" } 
+reth-cli-util = { git = "https://github.com/0xEigenLabs/reth" } 
+reth-ethereum-cli = { git = "https://github.com/0xEigenLabs/reth" } 
+reth-errors = { git = "https://github.com/0xEigenLabs/reth" } 
+reth-cli = { git = "https://github.com/0xEigenLabs/reth" } 
 
 # eth
 alloy-rlp = "0.3.4"
+alloy-eips = { version = "0.13.0", default-features = false }
+alloy-primitives = { version = "0.8.25", default-features = false, features = ["map-foldhash"] }
+alloy-consensus = { version = "0.13.0", default-features = false }
 
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }
@@ -70,7 +79,7 @@ eyre = "0.6.8"
 thiserror = "1.0.40"
 anyhow = "1.0"
 
-c-kzg = "0.4.2"
+c-kzg = "2.1.0"
 
 jsonrpsee = { version = "0.20", features = ["server", "macros"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -81,7 +90,8 @@ hex = "0.4.3"
 # revm
 #revm = { version = "7.1.0", features = ["std", "secp256k1"] }
 #revm = { git = "https://github.com/bluealloy/revm", tag = "v34", features = ["std", "secp256k1"] }
-revm-primitives = { version = "3.0.0", features = ["std"], default-features = false }
+#revm-primitives = { version = "3.0.0", features = ["std"], default-features = false }
+revm-primitives = { version = "17.0.0", default-features = false }
 #revm-inspectors = { git = "https://github.com/paradigmxyz/evm-inspectors", rev = "0ad0338" }
 
 # tonic
@@ -97,7 +107,7 @@ uuid = { version = "1.2", features = ["v4", "fast-rng", "macro-diagnostics"] }
 
 # eth
 alloy-chains = { version = "0.1" }
-reqwest = { version = "0.12.5", features =  ["json", "blocking"] }
+reqwest = "0.12.5"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"

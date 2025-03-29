@@ -11,7 +11,6 @@ pub struct GlobalEnv {
     pub chain_id: u64,
     pub program_name: String,
     pub bridge_service_addr: String,
-    pub debug_proof: bool,
 }
 
 /// GLOBAL_ENV is a global variable that holds the environment variables,
@@ -29,7 +28,4 @@ pub static GLOBAL_ENV: Lazy<GlobalEnv> = Lazy::new(|| GlobalEnv {
         .to_lowercase(),
     bridge_service_addr: std::env::var("BRIDGE_SERVICE_ADDR")
         .unwrap_or("http://localhost:8001".to_string()),
-    debug_proof: std::env::var("DEBUG_PROOF")
-        .unwrap_or_else(|_| String::from("FALSE"))
-        .eq_ignore_ascii_case("TRUE"),
 });

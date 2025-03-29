@@ -1,16 +1,14 @@
 use clap::value_parser;
-use reth_node_core::args::utils::{
-    chain_help, genesis_value_parser, parse_socket_address, SUPPORTED_CHAINS,
-};
 use reth_node_core::args::{
     DatabaseArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs,
     TxPoolArgs,
 };
+use reth::chainspec::{SUPPORTED_CHAINS, ChainSpec, EthereumChainSpecParser};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
-use reth_primitives::ChainSpec;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use reth_cli_util::parse_socket_address;
 
 #[derive(Debug, Clone, clap::Args)]
 pub struct RethCmd {
@@ -31,17 +29,7 @@ pub struct RethCmd {
     /// The chain this node is running.
     ///
     /// Possible values are either a built-in chain or the path to a chain specification file.
-    #[arg(
-        long,
-        value_name = "CHAIN_OR_PATH",
-        long_help = chain_help(),
-        default_value = SUPPORTED_CHAINS[0],
-        default_value_if("dev", "true", "dev"),
-        value_parser = genesis_value_parser,
-        required = false,
-    )]
-    pub chain: Arc<ChainSpec>,
-
+<>
     /// Enable Prometheus metrics.
     ///
     /// The metrics will be served at the given interface and port.

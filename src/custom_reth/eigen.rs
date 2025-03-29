@@ -1,16 +1,17 @@
 use jsonrpsee::core::Serialize;
 use std::sync::Arc;
 // Reth block related imports
-use reth_primitives::{Block, B256};
 use reth_provider::BlockReaderIdExt;
 
 // Rpc related imports
 use crate::db::{prefix, Database as RollupDatabase, ProofResult, Status};
 use jsonrpsee::proc_macros::rpc;
-use reth_interfaces::RethError;
-use reth_rpc::eth::error::{EthApiError, EthResult};
 use serde::Deserialize;
-
+use reth::rpc::server_types::eth::EthApiError;
+use reth::rpc::server_types::eth::EthResult;
+use reth_errors::RethError;
+use reth_primitives::{Block};
+use alloy_primitives::B256;
 /// trait interface for a custom rpc namespace: `EigenRpc`
 ///
 /// This defines an additional namespace where all methods are configured as trait functions.

@@ -5,7 +5,6 @@ use config::File;
 use reth_libmdbx::*;
 use serde::Deserialize;
 use std::fs;
-use std::ops::RangeInclusive;
 use std::path::Path;
 
 pub struct Db(MdbxDB);
@@ -46,13 +45,10 @@ pub fn open_mdbx_db(config: Config) -> std::result::Result<Box<dyn EigenDB>, ()>
     // create the directory if it does not exist
     // TODO: catch errors
     fs::create_dir_all(&config.path).unwrap();
+    println!("11111, {}", config.path);
 
     let env = match Environment::builder()
         .set_max_dbs(config.max_dbs)
-        .set_geometry(Geometry::<RangeInclusive<usize>> {
-            size: Some(0..=1024 * 1024 * 1024 * 1024), // Max 1TB
-            ..Default::default()
-        })
         .open(std::path::Path::new(&config.path))
     {
         Ok(env) => env,
@@ -61,6 +57,7 @@ pub fn open_mdbx_db(config: Config) -> std::result::Result<Box<dyn EigenDB>, ()>
             return Err(());
         }
     };
+    println!("111112222");
 
     let txn_open_default_db = env.begin_rw_txn().unwrap();
     let default_db = match txn_open_default_db.create_db(None, reth_libmdbx::DatabaseFlags::empty())
@@ -71,9 +68,11 @@ pub fn open_mdbx_db(config: Config) -> std::result::Result<Box<dyn EigenDB>, ()>
             return Err(());
         }
     };
+    println!("1111122223333");
 
     // TODO: catch errors
     txn_open_default_db.commit().unwrap();
+    println!("11111222233334444");
 
     Ok(Box::new(libmdbx::Db::new(env, default_db)))
 }
@@ -112,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_open_mdbx_db() {
-        let path = "tmp/test_open_mdbx_db";
+        let path = "/tmp/test_open_mdbx_db";
         let max_dbs = 20;
         let config = Config {
             path: path.to_string(),
@@ -125,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_mdbx() {
-        let path = "tmp/test_mdbx_db";
+        let path = "/tmp/test_mdbx_db";
         let max_dbs = 20;
         let config = Config {
             path: path.to_string(),
@@ -168,15 +167,12 @@ mod tests {
         use reth_libmdbx::WriteFlags;
 
         // path to the database
-        let path = "tmp/test_mdbx";
+        let path = "/tmp/test_mdbx";
         // create the directory if it does not exist
         fs::create_dir_all(path).unwrap();
 
         // initialize the environment
-        let env = match Environment::builder()
-            .set_max_dbs(20)
-            .open(std::path::Path::new(path))
-        {
+        let env = match Environment::builder().open(std::path::Path::new(path)) {
             Ok(env) => env,
             Err(e) => {
                 println!("Error opening the environment: {:?}", e);

@@ -1,18 +1,28 @@
 use anyhow::anyhow;
+use reth::providers::ProviderFactory;
 use anyhow::Result;
 use jsonrpsee::tracing::info;
 use reth_db::init_db;
 use reth_db::mdbx::DatabaseArguments;
-use reth_node_core::args::utils::{chain_help, genesis_value_parser, SUPPORTED_CHAINS};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
-use reth_node_core::init::init_genesis;
-use reth_primitives::ChainSpec;
-use reth_provider::ProviderFactory;
+use reth::chainspec::ChainSpec;
 use std::sync::Arc;
+use reth_db_common::init::init_genesis;
+use reth_node_core::args::LogArgs;
+use std::fmt;
+
+use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
+use reth_cli::chainspec::{ChainSpecParser};
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct NoArgs;
 
 #[derive(Debug, Clone, clap::Args)]
 #[command(version, author, about, long_about)]
-pub struct InitCmd {
+pub struct InitCmd<
+    C: ChainSpecParser = EthereumChainSpecParser,
+    Ext: clap::Args + fmt::Debug = NoArgs,
+> {
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
     datadir: MaybePlatformPath<DataDirPath>,
 
@@ -22,9 +32,9 @@ pub struct InitCmd {
     #[arg(
         long,
         value_name = "CHAIN_OR_PATH",
-        long_help = chain_help(),
-        default_value = SUPPORTED_CHAINS[0],
-        value_parser = genesis_value_parser
+        long_help = C::help_message(),
+        default_value = C::SUPPORTED_CHAINS[0],
+        value_parser = C::parser() 
     )]
     chain: Arc<ChainSpec>,
 }
