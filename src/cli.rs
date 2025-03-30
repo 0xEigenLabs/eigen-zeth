@@ -15,7 +15,7 @@ pub enum SubCommand {
     Run(RunCmd),
     ChainInfo(ChainInfoCmd),
     Config(ConfigCmd),
-    Init(InitCmd<>),
+    Init(InitCmd),
 }
 
 impl Cli {

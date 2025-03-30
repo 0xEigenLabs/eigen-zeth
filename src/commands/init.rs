@@ -1,3 +1,8 @@
+use crate::custom_reth::MyCustomNode;
+use reth::chainspec::ChainSpecBuilder;
+use reth_db::DatabaseEnv;
+use reth::builder::{NodeTypes, NodeTypesWithDBAdapter};
+use reth::providers::providers::StaticFileProvider;
 use anyhow::anyhow;
 use reth::providers::ProviderFactory;
 use anyhow::Result;
@@ -8,23 +13,23 @@ use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use reth::chainspec::ChainSpec;
 use std::sync::Arc;
 use reth_db_common::init::init_genesis;
-use reth_node_core::args::LogArgs;
+use reth_node_core::args::{DatadirArgs, LogArgs};
 use std::fmt;
 
 use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
 use reth_cli::chainspec::{ChainSpecParser};
+use clap::Args;
 
-#[derive(clap::Args, Clone, Debug)]
+#[derive(Args, Clone, Debug)]
 pub struct NoArgs;
 
-#[derive(Debug, Clone, clap::Args)]
-#[command(version, author, about, long_about)]
+#[derive(Debug, Clone, Args)]
 pub struct InitCmd<
-    C: ChainSpecParser = EthereumChainSpecParser,
-    Ext: clap::Args + fmt::Debug = NoArgs,
+    //C: ChainSpecParser = EthereumChainSpecParser,
+    //Ext: Args + fmt::Debug = NoArgs,
 > {
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
-    datadir: MaybePlatformPath<DataDirPath>,
+    datadir: DatadirArgs,
 
     /// The chain this node is running.
     ///
@@ -44,8 +49,8 @@ impl InitCmd {
         info!(target: "zeth::cli", "zeth's layer2 chain init starting");
 
         // add network name to data dir
-        let data_dir = self.datadir.unwrap_or_chain_default(self.chain.chain);
-        let db_path = data_dir.db_path();
+        let data_dir = self.datadir.clone().resolve_datadir(self.chain.chain());
+        let db_path = data_dir.db();
         info!(target: "zeth::cli", path = ?db_path, "Opening database");
         let db_arguments = DatabaseArguments::default();
         let db = Arc::new(
@@ -55,11 +60,13 @@ impl InitCmd {
         );
         info!(target: "zeth::cli", "Database opened");
 
+        let spec = Arc::new(ChainSpecBuilder::mainnet().build());
         let provider_factory =
-            ProviderFactory::new(db, self.chain.clone(), data_dir.static_files_path())?;
+            ProviderFactory::<NodeTypesWithDBAdapter<MyCustomNode, Arc<DatabaseEnv>>>::new(db, spec.clone(),
+                                 StaticFileProvider::read_write(self.datadir.static_files_path.as_ref().unwrap())?);
         info!(target: "zeth::cli", "Writing genesis block");
 
-        let hash = init_genesis(provider_factory)?;
+        let hash = init_genesis(&provider_factory)?;
 
         info!(target: "zeth::cli", hash = ?hash, "Genesis block written");
 

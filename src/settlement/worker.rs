@@ -1,4 +1,7 @@
 use crate::config::env::GLOBAL_ENV;
+use alloy_primitives::{
+    keccak256, Bytes, ChainId, PrimitiveSignature as Signature, TxKind, B256, U256,
+};
 use crate::db::{keys, prefix, Database, ProofResult, Status};
 use crate::prover::ProverChannel;
 use crate::settlement::{BatchData, Settlement};

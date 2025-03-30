@@ -38,6 +38,7 @@ alloy-rlp = "0.3.4"
 alloy-eips = { version = "0.13.0", default-features = false }
 alloy-primitives = { version = "0.8.25", default-features = false, features = ["map-foldhash"] }
 alloy-consensus = { version = "0.13.0", default-features = false }
+alloy-rpc-types = { version = "0.13.0", features = ["eth"], default-features = false }
 
 #reth-payload-builder = { path = "../reth/crates/payload/builder" }
 #reth-basic-payload-builder = { path = "../reth/crates/payload/basic" }

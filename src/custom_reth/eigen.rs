@@ -1,7 +1,7 @@
 use jsonrpsee::core::Serialize;
 use std::sync::Arc;
 // Reth block related imports
-use reth_provider::BlockReaderIdExt;
+use reth::{primitives::Block, providers::BlockReaderIdExt};
 
 // Rpc related imports
 use crate::db::{prefix, Database as RollupDatabase, ProofResult, Status};
@@ -10,7 +10,6 @@ use serde::Deserialize;
 use reth::rpc::server_types::eth::EthApiError;
 use reth::rpc::server_types::eth::EthResult;
 use reth_errors::RethError;
-use reth_primitives::{Block};
 use alloy_primitives::B256;
 /// trait interface for a custom rpc namespace: `EigenRpc`
 ///
@@ -36,7 +35,7 @@ pub struct EigenRpcExt<Provider> {
 
 impl<Provider> EigenRpcExtApiServer for EigenRpcExt<Provider>
 where
-    Provider: BlockReaderIdExt + 'static,
+    Provider: BlockReaderIdExt<Block = reth::primitives::Block> + 'static,
 {
     /// Showcasing how to implement a custom rpc method
     /// using the provider.

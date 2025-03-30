@@ -1,8 +1,5 @@
 use clap::value_parser;
-use reth_node_core::args::{
-    DatabaseArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs,
-    TxPoolArgs,
-};
+use reth_node_core::args::{DatabaseArgs, DatadirArgs, DebugArgs, DevArgs, NetworkArgs, PayloadBuilderArgs, PruningArgs, RpcServerArgs, TxPoolArgs};
 use reth::chainspec::{SUPPORTED_CHAINS, ChainSpec, EthereumChainSpecParser};
 use reth_node_core::dirs::{DataDirPath, MaybePlatformPath};
 use std::net::SocketAddr;
@@ -20,7 +17,7 @@ pub struct RethCmd {
     /// - Windows: `{FOLDERID_RoamingAppData}/reth/`
     /// - macOS: `$HOME/Library/Application Support/reth/`
     #[arg(long, value_name = "DATA_DIR", verbatim_doc_comment, default_value_t)]
-    pub datadir: MaybePlatformPath<DataDirPath>,
+    pub datadir: DatadirArgs,
 
     /// The path to the configuration file to use.
     #[arg(long, value_name = "FILE", verbatim_doc_comment)]
@@ -29,7 +26,7 @@ pub struct RethCmd {
     /// The chain this node is running.
     ///
     /// Possible values are either a built-in chain or the path to a chain specification file.
-<>
+    pub chain: Arc<ChainSpec>,
     /// Enable Prometheus metrics.
     ///
     /// The metrics will be served at the given interface and port.
@@ -59,9 +56,9 @@ pub struct RethCmd {
     #[arg(long, conflicts_with = "instance", global = true)]
     pub with_unused_ports: bool,
 
-    /// Overrides the KZG trusted setup by reading from the supplied file.
-    #[arg(long, value_name = "PATH")]
-    pub trusted_setup_file: Option<PathBuf>,
+    // /// Overrides the KZG trusted setup by reading from the supplied file.
+    // #[arg(long, value_name = "PATH")]
+    // pub trusted_setup_file: Option<PathBuf>,
 
     /// All networking related arguments
     #[command(flatten)]
