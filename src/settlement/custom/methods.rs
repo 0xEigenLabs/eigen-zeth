@@ -342,6 +342,7 @@ impl CustomClient {
     }
 
     pub async fn sequence_batches(&self, batches: Vec<BatchData>) -> Result<()> {
+        return Ok(());
         let batches: Vec<_> = batches
             .into_iter()
             .map(|batch| {
@@ -409,6 +410,7 @@ impl CustomClient {
         proof: String,
         input: String,
     ) -> Result<()> {
+        return Ok(());
         let body = json!({
             "pending_state_num": pending_state_num,
             "init_num_batch": init_num_batch,
