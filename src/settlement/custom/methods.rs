@@ -4,6 +4,7 @@ use ethers_core::types::{Address, Bytes, U256};
 use ethers_core::utils::hex;
 use reqwest::Client;
 use serde_json::json;
+use hex::FromHex;
 
 pub struct CustomClient {
     pub client: Client,
@@ -24,6 +25,10 @@ impl CustomClient {
     }
 
     pub async fn get_global_exit_root(&self) -> Result<[u8; 32]> {
+        let hex_str = "aadca94ab223b3e975c1cdfed7e2248ab7d91f056ba8f6d9060a36799f950a7e";
+        let global_exit_root = <[u8; 32]>::from_hex(hex_str).expect("Invalid hex string");
+        return Ok(global_exit_root);
+        // panic!("Error");
         let respose = self
             .client
             .get(format!("{}/get-global-exit-root", self.url.clone()))

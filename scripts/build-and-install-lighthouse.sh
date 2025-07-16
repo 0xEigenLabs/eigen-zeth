@@ -14,10 +14,10 @@ fi
 cd ${LIGHTHOUSE_SOURCE_PATH}
 
 echo "Removing existing lighthouse source"
-rm -rf ./*
+#rm -rf ./*
 
 echo "Cloning lighthouse source"
-git clone https://github.com/sigp/lighthouse.git
+#git clone https://github.com/sigp/lighthouse.git
 cd lighthouse
 
 ## lighthouse tag: v5.2.1

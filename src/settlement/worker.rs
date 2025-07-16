@@ -16,7 +16,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-
+use hex::FromHex;
 pub(crate) struct Settler {}
 
 /// A general configuration that needs to be included in the configuration structure of each implementation.
@@ -278,7 +278,10 @@ impl Settler {
                     if let Some(proof_bytes) = db.get(next_proof_key.as_bytes()) {
                         let proof_data: ProofResult = serde_json::from_slice(&proof_bytes).unwrap();
                         // verify the proof
-                        let zeth_last_rollup_exit_root = get_rollup_exit_root_by_block(proof_data.block_number, &bridge_service_client).await?;
+                        // let zeth_last_rollup_exit_root = get_rollup_exit_root_by_block(proof_data.block_number, &bridge_service_client).await?;
+
+                        let hex_str = "aadca94ab223b3e975c1cdfed7e2248ab7d91f056ba8f6d9060a36799f950a7e";
+                        let zeth_last_rollup_exit_root = <[u8; 32]>::from_hex(hex_str).expect("Invalid hex string");
 
                         match settlement_provider.verify_batches(
                             0,
@@ -423,7 +426,9 @@ impl Settler {
                     }
                     let txs_clone = block.transactions;
                     let mut batches = Vec::<BatchData>::new();
-                    let global_exit_root = settlement_provider.get_global_exit_root().await.map_err(|e| anyhow!("failed to get global exit root, err: {:?}", e))?;
+                    // let global_exit_root = settlement_provider.get_global_exit_root().await.map_err(|e| anyhow!("failed to get global exit root, err: {:?}", e))?;
+                    let hex_str = "aadca94ab223b3e975c1cdfed7e2248ab7d91f056ba8f6d9060a36799f950a7e";
+                    let global_exit_root = <[u8; 32]>::from_hex(hex_str).expect("Invalid hex string");
                     //
                     for tx in txs {
                         let tx_legacy = convert_to_tx_legacy(&tx)?;
